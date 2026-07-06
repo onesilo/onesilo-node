@@ -17,6 +17,8 @@ import (
 	"github.com/onesilo/silo-node/internal/compute"
 	"github.com/onesilo/silo-node/internal/config"
 	"github.com/onesilo/silo-node/internal/controlplane"
+	"github.com/onesilo/silo-node/internal/lanserve"
+	"github.com/onesilo/silo-node/internal/memory"
 	"github.com/onesilo/silo-node/internal/tunnel"
 	"github.com/onesilo/silo-node/internal/version"
 )
@@ -40,6 +42,9 @@ type Node struct {
 	reconcileMu sync.Mutex
 
 	computeCap   *compute.Capability
+	memoryCap    *memory.Capability
+	lanCap       *lanserve.Capability
+	nodeKey      string
 	capabilities []Capability
 	capRunning   map[string]bool
 
@@ -67,11 +72,6 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 		jwtStore:   &controlplane.JWTStore{},
 	}
 
-	n.computeCap = compute.New(n.snapshot, logger.With("capability", "compute"))
-	// The memory capability arrives in a later phase; append it here and
-	// the reconciler, heartbeat mapping, and status all pick it up.
-	n.capabilities = []Capability{n.computeCap}
-
 	dataDir, err := cfg.ResolvedDataDir()
 	if err != nil {
 		return nil, err
@@ -79,6 +79,46 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating data dir %s: %w", dataDir, err)
 	}
+
+	// Node key: authenticates the memory API (X-Silo-Node-Key); created on
+	// first start, surfaced via admin GET /v1/status.
+	n.nodeKey, err = memory.LoadOrCreateNodeKey(dataDir)
+	if err != nil {
+		return nil, err
+	}
+
+	n.computeCap = compute.New(n.snapshot, logger.With("capability", "compute"))
+
+	// Memory embeds via the compute capability's Ollama client when compute
+	// is enabled; otherwise recall degrades to keyword-only.
+	n.memoryCap = memory.New(n.snapshot, func() (memory.Embedder, string, bool) {
+		cfg := n.snapshot()
+		if !cfg.Capabilities.Compute {
+			return nil, "", false
+		}
+		return n.computeCap, cfg.Memory.EmbedModel, true
+	}, logger.With("capability", "memory"))
+
+	// The LAN server runs when lan.enabled OR memory is on: the memory API
+	// is mounted on the same port. Bonjour only advertises while
+	// lan.enabled (see internal/lanserve).
+	n.lanCap = lanserve.NewCapability(
+		n.snapshot,
+		n.computeCap,
+		n.memoryCap.Handler(func() string { return n.nodeKey }),
+		func() string { return n.computeCap.CurrentModel() },
+		lanserve.FileKeySource(func() (string, error) {
+			cfg := n.snapshot()
+			return cfg.ResolvedDataDir()
+		}),
+		nil, // production zeroconf announcer
+		logger.With("capability", "lan"),
+	)
+
+	// The heartbeat maps compute -> llm_inference and memory ->
+	// silo_recall/silo_remember; "lan" has no control-plane identifier and
+	// is reported only through the admin API.
+	n.capabilities = []Capability{n.computeCap, n.memoryCap, n.lanCap}
 
 	tokens := &controlplane.ModalTokenSource{
 		Mode:   func() string { return n.snapshot().ControlPlane.AuthMode },
@@ -294,10 +334,14 @@ func (n *Node) stopTunnel() {
 func (n *Node) Status(ctx context.Context) adminapi.Status {
 	cfg := n.snapshot()
 	caps := make([]adminapi.CapabilityStatus, 0, len(n.capabilities))
+	memoryHealthy := false
 	for _, c := range n.capabilities {
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		healthy, detail := c.Healthy(probeCtx)
 		cancel()
+		if c.Name() == "memory" {
+			memoryHealthy = healthy
+		}
 		n.reconcileMu.Lock()
 		running := n.capRunning[c.Name()]
 		n.reconcileMu.Unlock()
@@ -308,6 +352,10 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 			Healthy: healthy,
 			Detail:  detail,
 		})
+	}
+	siloCount := 0
+	if silos, err := n.memoryCap.Silos(ctx); err == nil {
+		siloCount = len(silos)
 	}
 	registered, deviceID := n.regMgr.Status()
 	tunnelURL := n.tunnelURL()
@@ -325,6 +373,17 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 			DeviceID:   deviceID,
 			AuthMode:   cfg.ControlPlane.AuthMode,
 		},
+		LAN: adminapi.LANStatus{
+			Published: n.lanCap.Published(),
+			Port:      cfg.LAN.Port,
+			Clients:   n.lanCap.Clients(),
+		},
+		Memory: adminapi.MemoryStatus{
+			Enabled: cfg.Capabilities.Memory,
+			Healthy: memoryHealthy,
+			Silos:   siloCount,
+		},
+		NodeKey: n.nodeKey,
 	}
 }
 

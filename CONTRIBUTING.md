@@ -23,6 +23,8 @@ internal/logging/     slog setup
 internal/node/        lifecycle reconciler + the Capability interface
 internal/adminapi/    localhost admin API (127.0.0.1 only, token-authenticated)
 internal/compute/     compute capability (Ollama-backed inference)
+internal/memory/      memory capability (SQLite/FTS5 store, hybrid recall, HTTP API)
+internal/lanserve/    LAN serving (iOS WebSocket protocol, Bonjour, lan.port HTTP server)
 internal/tunnel/      Cloudflare quick-tunnel manager
 internal/controlplane/ registration, heartbeats, token sources
 ```
@@ -41,12 +43,12 @@ internal/controlplane/ registration, heartbeats, token sources
   ask* is decided by the control plane, and *how bytes stay confidential on
   the LAN* is the transport's job. Keeping memory ignorant of both makes it
   impossible to accidentally turn a transport secret into an authorization
-  check. (The memory and lanserve packages land in a later phase; the rule
-  applies from their first commit.)
+  check. The memory API authenticates with the separate node key
+  (`data_dir/node.key`).
 - **Dependencies are a budget, not a convenience.** Currently:
-  `BurntSushi/toml`, `google/uuid`, stdlib. `coder/websocket` and a zeroconf
-  library arrive with the LAN phase. Anything else needs a strong case in
-  the PR description.
+  `BurntSushi/toml`, `google/uuid`, `coder/websocket`, `libp2p/zeroconf`,
+  `modernc.org/sqlite`, stdlib. Anything else needs a strong case in the PR
+  description.
 - **No panics on start paths; goroutines exit on context cancellation.**
   Every background loop takes a `context.Context` and must return promptly
   when it is cancelled. Graceful shutdown deregisters from the control

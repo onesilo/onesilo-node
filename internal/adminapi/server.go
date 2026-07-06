@@ -42,6 +42,26 @@ type Status struct {
 	Capabilities  []CapabilityStatus `json:"capabilities"`
 	Tunnel        TunnelStatus       `json:"tunnel"`
 	Registration  RegistrationStatus `json:"registration"`
+	LAN           LANStatus          `json:"lan"`
+	Memory        MemoryStatus       `json:"memory"`
+	// NodeKey authenticates memory API calls (X-Silo-Node-Key). Exposed
+	// here so the desktop app / control plane can read it; the admin API
+	// is localhost-only and token-authenticated.
+	NodeKey string `json:"node_key,omitempty"`
+}
+
+// LANStatus is the LAN server's live state.
+type LANStatus struct {
+	Published bool `json:"published"` // Bonjour _silo-llm._tcp announced
+	Port      int  `json:"port"`
+	Clients   int  `json:"clients"` // connected WebSocket clients
+}
+
+// MemoryStatus is the memory capability's live state.
+type MemoryStatus struct {
+	Enabled bool `json:"enabled"`
+	Healthy bool `json:"healthy"`
+	Silos   int  `json:"silos"` // distinct silos with stored memories
 }
 
 // CapabilityStatus is one capability's live state.

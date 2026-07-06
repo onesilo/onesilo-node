@@ -16,6 +16,7 @@ type ConfigPatch struct {
 	Log          *LogPatch          `json:"log,omitempty"`
 	Capabilities *CapabilitiesPatch `json:"capabilities,omitempty"`
 	ControlPlane *ControlPlanePatch `json:"control_plane,omitempty"`
+	Memory       *MemoryPatch       `json:"memory,omitempty"`
 	Ollama       *OllamaPatch       `json:"ollama,omitempty"`
 	Tunnel       *TunnelPatch       `json:"tunnel,omitempty"`
 	LAN          *LANPatch          `json:"lan,omitempty"`
@@ -36,6 +37,10 @@ type ControlPlanePatch struct {
 	URL        *string `json:"url,omitempty"`
 	AuthMode   *string `json:"auth_mode,omitempty"`
 	DeviceName *string `json:"device_name,omitempty"`
+}
+
+type MemoryPatch struct {
+	EmbedModel *string `json:"embed_model,omitempty"`
 }
 
 type OllamaPatch struct {
@@ -81,6 +86,9 @@ func (p ConfigPatch) ApplyTo(cfg *config.Config) {
 		setIf(&cfg.ControlPlane.URL, p.ControlPlane.URL)
 		setIf(&cfg.ControlPlane.AuthMode, p.ControlPlane.AuthMode)
 		setIf(&cfg.ControlPlane.DeviceName, p.ControlPlane.DeviceName)
+	}
+	if p.Memory != nil {
+		setIf(&cfg.Memory.EmbedModel, p.Memory.EmbedModel)
 	}
 	if p.Ollama != nil {
 		setIf(&cfg.Ollama.Host, p.Ollama.Host)
