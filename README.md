@@ -1,6 +1,6 @@
 # silo-node
 
-An open-source node for the [Silo](https://onesilo.com) network. A node is a
+An open-source node for the [One Silo](https://onesilo.com) network. A node is a
 machine you own — a Mac in your office, a home server, a container on your
 NAS — that contributes capabilities to your Silo account and stays reachable
 through a Cloudflare tunnel, so your Silo apps can use *your* hardware from
