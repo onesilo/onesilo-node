@@ -39,6 +39,8 @@ func Settings() []Setting {
 			func(c *Config, v string) error { c.ControlPlane.AuthMode = v; return nil }},
 		{"device-name", "SILO_NODE_DEVICE_NAME", "device name reported to the control plane (default: hostname)",
 			func(c *Config, v string) error { c.ControlPlane.DeviceName = v; return nil }},
+		{"memory-embed-model", "SILO_NODE_MEMORY_EMBED_MODEL", "Ollama embedding model for hybrid memory recall",
+			func(c *Config, v string) error { c.Memory.EmbedModel = v; return nil }},
 		{"ollama-host", "SILO_NODE_OLLAMA_HOST", "base URL of the Ollama server",
 			func(c *Config, v string) error { c.Ollama.Host = v; return nil }},
 		{"ollama-manage", "SILO_NODE_OLLAMA_MANAGE", "spawn `ollama serve` when unreachable (true|false)",

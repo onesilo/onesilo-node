@@ -32,6 +32,7 @@ type Config struct {
 	Log          Log          `toml:"log" json:"log"`
 	Capabilities Capabilities `toml:"capabilities" json:"capabilities"`
 	ControlPlane ControlPlane `toml:"control_plane" json:"control_plane"`
+	Memory       Memory       `toml:"memory" json:"memory"`
 	Ollama       Ollama       `toml:"ollama" json:"ollama"`
 	Tunnel       Tunnel       `toml:"tunnel" json:"tunnel"`
 	LAN          LAN          `toml:"lan" json:"lan"`
@@ -56,6 +57,13 @@ type ControlPlane struct {
 	AuthMode string `toml:"auth_mode" json:"auth_mode"` // "jwt" | "api_key"
 	// DeviceName defaults to the OS hostname when empty.
 	DeviceName string `toml:"device_name" json:"device_name"`
+}
+
+// Memory configures the memory capability (capabilities.memory toggles it).
+type Memory struct {
+	// EmbedModel is the Ollama embedding model used for hybrid recall when
+	// the compute capability is available. Empty means nomic-embed-text.
+	EmbedModel string `toml:"embed_model" json:"embed_model"`
 }
 
 // Ollama configures the local inference runtime for the compute capability.
@@ -104,6 +112,9 @@ func Default() Config {
 		ControlPlane: ControlPlane{
 			URL:      "https://api.onesilo.com",
 			AuthMode: AuthModeJWT,
+		},
+		Memory: Memory{
+			EmbedModel: "nomic-embed-text",
 		},
 		Ollama: Ollama{
 			Host:         "http://127.0.0.1:11434",
