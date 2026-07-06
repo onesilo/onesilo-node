@@ -21,8 +21,12 @@ level = "info"
 # control plane only while at least one capability is enabled AND a public
 # URL is available (see [tunnel]).
 
-# Memory: silo recall/remember served from this node. Arrives in a later
-# release; the toggle is reserved.
+# Memory: silo recall/remember served from this node (SQLite + FTS5 at
+# <data_dir>/memory.db). The memory HTTP API is served on lan.port — the
+# LAN server starts whenever this is true, even with lan.enabled = false.
+# Requests are authenticated with the X-Silo-Node-Key header; the key is
+# generated on first start at <data_dir>/node.key and exposed through the
+# admin API's GET /v1/status.
 memory = false
 
 # Compute: local LLM inference backed by Ollama.
@@ -43,6 +47,12 @@ auth_mode = "jwt"
 
 # Name shown in the Silo apps for this node. Defaults to the hostname.
 device_name = ""
+
+[memory]
+# Ollama embedding model for hybrid recall. Used only while the compute
+# capability is enabled; when compute is off (or the model isn't pulled),
+# recall degrades to FTS5 keyword search and remember skips embeddings.
+embed_model = "nomic-embed-text"
 
 [ollama]
 # Base URL of the Ollama server the compute capability uses.
@@ -80,8 +90,13 @@ cloudflared_path = ""
 external_url = ""
 
 [lan]
-# Local-network serving (mDNS discovery + LAN HTTP API). Arrives in a later
-# release; the quick tunnel already targets this port.
+# Local-network LLM serving: Bonjour discovery (_silo-llm._tcp) plus the
+# E2E-encrypted WebSocket protocol the Silo iOS app speaks (see
+# docs/protocol.md). Requires the compute capability to answer chat.
+# NOTE: the LAN server also starts when capabilities.memory is true — the
+# memory API rides the same port. enabled=false then only means no Bonjour
+# announcement and no LLM chat; the port is still bound.
+# The quick tunnel targets this port as well.
 enabled = false
 port = 8765
 
