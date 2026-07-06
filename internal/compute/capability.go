@@ -112,6 +112,35 @@ func (c *Capability) CurrentModel() string {
 	return c.currentModel
 }
 
+// StreamGenerate streams a completion from the node's resolved model. Used
+// by the LAN serving path; ctx cancellation aborts the stream (interrupt).
+func (c *Capability) StreamGenerate(ctx context.Context, prompt string, temperature float64) (<-chan ollama.GenerateResult, error) {
+	c.mu.Lock()
+	started := c.started
+	model := c.currentModel
+	c.mu.Unlock()
+	if !started {
+		return nil, errors.New("compute capability not running")
+	}
+	if model == "" {
+		resolved, err := ResolveRunnableModel(ctx, c.manager.Client(), c.getCfg().Ollama.DefaultModel)
+		if err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		c.currentModel = resolved
+		c.mu.Unlock()
+		model = resolved
+	}
+	return c.manager.Client().StreamGenerate(ctx, model, prompt, temperature)
+}
+
+// Embed computes embeddings via the Ollama server (memory capability's
+// hybrid recall). Satisfies memory.Embedder structurally.
+func (c *Capability) Embed(ctx context.Context, model string, texts []string) ([][]float64, error) {
+	return c.manager.Client().Embed(ctx, model, texts)
+}
+
 // ResolveRunnableModel picks the tag to run: the preferred (configured
 // default) model when installed, otherwise the first installed model — so a
 // machine with only e.g. qwen2.5:7b works without configuration. Mirrors
