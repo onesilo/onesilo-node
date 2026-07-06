@@ -27,7 +27,9 @@ silo-node ships two ways:
   it over the localhost admin API (config, auth tokens, lifecycle). You
   never interact with it directly.
 - **Standalone / Docker** — run it yourself with a TOML config file and an
-  `sc_` API key.
+  `sc_` API key. A reproducible distroless image and a compose file with an
+  Ollama sidecar ship in this repo — see
+  [docs/deploy-docker.md](docs/deploy-docker.md).
 
 ## Quickstart
 
