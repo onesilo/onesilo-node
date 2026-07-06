@@ -1,0 +1,92 @@
+# silo-node example configuration
+#
+# Copy to ~/.silo-node/config.toml (or pass -config /path/to/config.toml).
+# Every key can also be set by environment variable or CLI flag; precedence
+# is: flags > SILO_NODE_* env > this file > built-in defaults.
+# Run `silo-node -h` for the full flag/env list.
+
+# Directory for node state: device_id, pairing.key, and the persisted config
+# when it is updated through the admin API. "~" is expanded.
+# env: SILO_NODE_DATA_DIR
+data_dir = "~/.silo-node"
+
+[log]
+# Output format: "text" (human-friendly) or "json" (log shippers).
+format = "text"
+# One of: debug, info, warn, error.
+level = "info"
+
+[capabilities]
+# Each capability is independently enable-able. The node registers with the
+# control plane only while at least one capability is enabled AND a public
+# URL is available (see [tunnel]).
+
+# Memory: silo recall/remember served from this node. Arrives in a later
+# release; the toggle is reserved.
+memory = false
+
+# Compute: local LLM inference backed by Ollama.
+compute = false
+
+[control_plane]
+# Base URL of the Silo backend.
+# env: SILO_NODE_CONTROL_PLANE_URL
+url = "https://api.onesilo.com"
+
+# How the node authenticates to the control plane:
+#   "jwt"     - the Silo Desktop app pushes a short-lived Clerk JWT through
+#               the admin API (POST /v1/auth/jwt). Default for the bundled
+#               desktop deployment.
+#   "api_key" - an sc_ API key read from the SILO_API_KEY environment
+#               variable. Use this for Docker / headless deployments.
+auth_mode = "jwt"
+
+# Name shown in the Silo apps for this node. Defaults to the hostname.
+device_name = ""
+
+[ollama]
+# Base URL of the Ollama server the compute capability uses.
+host = "http://127.0.0.1:11434"
+
+# When true and no server answers at `host`, silo-node spawns `ollama serve`
+# itself (searching binary_path, $PATH, /opt/homebrew/bin, /usr/local/bin)
+# and stops it again when the capability stops. When false, an unreachable
+# server is reported as unhealthy instead.
+manage = false
+
+# Preferred model tag. If it isn't installed, the node advertises the first
+# installed model instead, so an unconfigured machine still serves.
+default_model = "llama3.2:3b"
+
+# Optional explicit path to the ollama binary (managed mode only).
+binary_path = ""
+
+[tunnel]
+# How this node becomes reachable from outside the local network:
+#   "off"      - no public URL; the node never registers with the control plane.
+#   "quick"    - spawn an ephemeral Cloudflare quick tunnel (`cloudflared
+#                tunnel --url http://localhost:<lan.port>`). The URL changes
+#                on every restart; the node re-registers automatically.
+#   "external" - you run your own ingress (named Cloudflare tunnel, reverse
+#                proxy); set external_url to its public https URL.
+mode = "off"
+
+# Optional explicit path to cloudflared (quick mode). Defaults to searching
+# /opt/homebrew/bin, /usr/local/bin, then $PATH.
+cloudflared_path = ""
+
+# Required when mode = "external". Note the control plane currently accepts
+# only *.trycloudflare.com / *.cfargotunnel.com hostnames.
+external_url = ""
+
+[lan]
+# Local-network serving (mDNS discovery + LAN HTTP API). Arrives in a later
+# release; the quick tunnel already targets this port.
+enabled = false
+port = 8765
+
+[admin]
+# Localhost-only admin API port. The Silo Desktop app drives the node
+# through this API; it is authenticated with the SILO_NODE_ADMIN_TOKEN
+# environment variable (all routes except GET /healthz).
+port = 8766
