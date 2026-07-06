@@ -1,0 +1,17 @@
+# Keep the build context to exactly what `go build` needs. Anything listed
+# here cannot invalidate the build cache or leak into the image.
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+bin/
+docs/
+scripts/
+*.md
+*.test
+*.out
+.DS_Store
+config.example.toml
+Makefile
+LICENSE
