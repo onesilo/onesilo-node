@@ -98,6 +98,10 @@ const (
 	// CodeOllamaUnavailable is sent encrypted when a user_message arrives
 	// but compute cannot serve it.
 	CodeOllamaUnavailable = "OLLAMA_UNAVAILABLE"
+	// CodePairingUnverified is sent encrypted when a user_message arrives on
+	// an automated-pairing session whose first-contact SAS has not yet been
+	// confirmed by the operator.
+	CodePairingUnverified = "PAIRING_UNVERIFIED"
 )
 
 func newStatus(status, message string) StatusUpdate {

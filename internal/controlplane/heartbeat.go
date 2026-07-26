@@ -43,17 +43,19 @@ const (
 // Manager owns the register / heartbeat / delete lifecycle against the
 // control plane. Single goroutine (Run); external events arrive as kicks.
 type Manager struct {
-	client       *Client
-	logger       *slog.Logger
-	dataDir      string
-	deviceName   func() string
-	modelName    func() string
-	capabilities func() []CapabilityProbe
+	client         *Client
+	logger         *slog.Logger
+	dataDir        string
+	deviceName     func() string
+	modelName      func() string
+	identityPubKey func() string
+	capabilities   func() []CapabilityProbe
 
 	kick chan struct{}
 
 	mu            sync.Mutex
 	deviceID      string
+	accountID     string
 	tunnelURL     string
 	registered    bool
 	registeredURL string
@@ -68,18 +70,23 @@ func NewManager(
 	dataDir string,
 	deviceName func() string,
 	modelName func() string,
+	identityPubKey func() string,
 	capabilities func() []CapabilityProbe,
 	logger *slog.Logger,
 ) *Manager {
+	if identityPubKey == nil {
+		identityPubKey = func() string { return "" }
+	}
 	return &Manager{
-		client:       client,
-		logger:       logger,
-		dataDir:      dataDir,
-		deviceName:   deviceName,
-		modelName:    modelName,
-		capabilities: capabilities,
-		kick:         make(chan struct{}, 1),
-		interval:     defaultHeartbeatInterval,
+		client:         client,
+		logger:         logger,
+		dataDir:        dataDir,
+		deviceName:     deviceName,
+		modelName:      modelName,
+		identityPubKey: identityPubKey,
+		capabilities:   capabilities,
+		kick:           make(chan struct{}, 1),
+		interval:       defaultHeartbeatInterval,
 	}
 }
 
@@ -117,6 +124,16 @@ func (m *Manager) Status() (registered bool, deviceID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.registered, m.deviceID
+}
+
+// Identity returns the node's registered device id and owning account id
+// (both empty until the first successful registration). Automated pairing
+// binds assertions to these, so they must come from the control plane, not
+// be assumed.
+func (m *Manager) Identity() (deviceID, accountID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.deviceID, m.accountID
 }
 
 // Run drives the lifecycle until ctx is cancelled, then deletes the
@@ -180,6 +197,7 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 		Capabilities:       capabilities,
 		DeviceID:           deviceID,
 		CapabilitiesStatus: m.capabilitiesStatus(ctx),
+		IdentityPubKey:     m.identityPubKey(),
 	})
 	switch {
 	case err == nil:
@@ -210,6 +228,9 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 
 	m.mu.Lock()
 	m.deviceID = deviceID
+	if resp.AccountID != "" {
+		m.accountID = resp.AccountID
+	}
 	m.registered = true
 	m.registeredURL = url
 	m.interval = interval

@@ -535,7 +535,64 @@ async function renderSettings() {
     }, "Save changes"),
   );
 
-  container.append(statusCard, formCard);
+  const pairingCard = el("div", { class: "card" });
+  container.append(statusCard, pairingCard, formCard);
+  renderPendingPairings(pairingCard);
+}
+
+// renderPendingPairings shows automated-pairing sessions awaiting a Short
+// Authentication String (SAS) confirmation. The operator compares the code
+// shown here with the one in the Silo app, then clicks Verify — that trusts
+// the app's identity key so its (and future) sessions can run inference.
+async function renderPendingPairings(card) {
+  card.replaceChildren(
+    el("h2", null, "Device pairing"),
+    el("p", { class: "hint" },
+      "New devices pairing over the relay show a security code here. Compare it with the code in the Silo app, then confirm — this proves no one is intercepting the connection."),
+  );
+  let data;
+  try {
+    data = await api("/v1/pairing/pending");
+  } catch (err) {
+    if (err.status === 401) return;
+    card.append(el("p", { class: "muted" }, "Pairing status unavailable: " + err.message));
+    return;
+  }
+  const pending = (data && data.pending) || [];
+  if (pending.length === 0) {
+    card.append(el("p", { class: "muted" }, "No devices are waiting to be verified."));
+    return;
+  }
+  for (const p of pending) {
+    const row = el("div", { class: "field-row", style: "align-items:center" },
+      el("div", null,
+        el("div", { style: "font-size:1.4em;letter-spacing:2px;font-family:monospace" },
+          (p.sas || "").replace(/(\d{4})(\d{4})/, "$1 $2")),
+        el("div", { class: "hint" }, "account " + shortId(p.account_id))),
+      el("button", {
+        class: "btn btn-primary btn-sm",
+        onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            await api("/v1/pairing/verify", {
+              method: "POST",
+              body: JSON.stringify({ account_id: p.account_id, app_id_pub: p.app_id_pub }),
+            });
+            toast("Device verified — it can now use this node");
+            renderPendingPairings(card);
+          } catch (err) {
+            if (err.status !== 401) toast("Verify failed: " + err.message, true);
+            e.currentTarget.disabled = false;
+          }
+        },
+      }, "Verify"));
+    card.append(row);
+  }
+}
+
+function shortId(id) {
+  if (!id) return "?";
+  return id.length > 12 ? id.slice(0, 8) + "…" : id;
 }
 
 function nodeKeyEl(key) {

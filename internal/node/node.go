@@ -5,6 +5,8 @@ package node
 
 import (
 	"context"
+	"crypto/ecdh"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -22,6 +24,7 @@ import (
 	"github.com/onesilo/silo-node/internal/gateway"
 	"github.com/onesilo/silo-node/internal/lanserve"
 	"github.com/onesilo/silo-node/internal/memory"
+	"github.com/onesilo/silo-node/internal/pairing"
 	"github.com/onesilo/silo-node/internal/tunnel"
 	"github.com/onesilo/silo-node/internal/version"
 )
@@ -49,6 +52,7 @@ type Node struct {
 	gatewayCap   *gateway.Capability
 	lanCap       *lanserve.Capability
 	nodeKey      string
+	identityKey  *ecdh.PrivateKey
 	capabilities []Capability
 	capRunning   map[string]bool
 
@@ -96,6 +100,14 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	// Node key: authenticates the memory API (X-Silo-Node-Key); created on
 	// first start, surfaced via admin GET /v1/status.
 	n.nodeKey, err = memory.LoadOrCreateNodeKey(dataDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Long-term P-256 identity key for automated device pairing; its public
+	// key is published to the control plane so pairing assertions can attest
+	// it. Created (0600) on first start alongside node.key / memory.key.
+	n.identityKey, err = pairing.LoadOrCreateIdentity(dataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -156,10 +168,41 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 		dataDir,
 		n.deviceName,
 		func() string { return n.computeCap.CurrentModel() },
+		n.identityPubKeyB64,
 		n.capabilityProbes,
 		logger.With("component", "controlplane"),
 	)
+
+	// Automated device pairing: verify control-plane assertions against the
+	// live JWKS, agree a per-connection key over authenticated ECDH, and pin
+	// app identity keys TOFU. The verifier binds each assertion to *this*
+	// node's registered device id and account (captured at registration), so
+	// an assertion for another tenant is rejected even if validly signed.
+	pins, err := pairing.LoadPinStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	keySource := pairing.NewHTTPKeySource(func() string { return n.snapshot().ControlPlane.URL })
+	newResponder := func() *pairing.Responder {
+		deviceID, accountID := n.regMgr.Identity()
+		return pairing.NewResponder(n.identityKey, &pairing.AssertionVerifier{
+			OwnDeviceID: deviceID,
+			OwnAccount:  accountID,
+			Keys:        keySource,
+		})
+	}
+	n.lanCap.SetPairer(lanserve.NewPairer(
+		newResponder, pins,
+		n.snapshot().LAN.RequirePairingVerification,
+		logger.With("component", "pairing"),
+	))
 	return n, nil
+}
+
+// identityPubKeyB64 is the node's long-term identity public key as a base64
+// uncompressed P-256 point, published to the control plane at registration.
+func (n *Node) identityPubKeyB64() string {
+	return base64.StdEncoding.EncodeToString(n.identityKey.PublicKey().Bytes())
 }
 
 func (n *Node) snapshot() config.Config {
@@ -487,6 +530,35 @@ func (n *Node) SetPairingKey(hexKey string) error {
 		return fmt.Errorf("writing pairing key: %w", err)
 	}
 	return nil
+}
+
+// PendingPairings implements adminapi.Controller: automated-pairing sessions
+// awaiting SAS confirmation.
+func (n *Node) PendingPairings() []adminapi.PairingPending {
+	p := n.lanCap.Pairer()
+	if p == nil {
+		return nil
+	}
+	pending := p.Pending()
+	out := make([]adminapi.PairingPending, 0, len(pending))
+	for _, pp := range pending {
+		out = append(out, adminapi.PairingPending{
+			AccountID: pp.AccountID,
+			AppIDPub:  pp.AppIDPubB64,
+			SAS:       pp.SAS,
+		})
+	}
+	return out
+}
+
+// VerifyPairing implements adminapi.Controller: confirm a pending pairing's
+// SAS, trusting that app identity key going forward.
+func (n *Node) VerifyPairing(accountID, appIDPub string) error {
+	p := n.lanCap.Pairer()
+	if p == nil {
+		return fmt.Errorf("automated pairing is not enabled on this node")
+	}
+	return p.Verify(accountID, appIDPub)
 }
 
 // Generate implements adminapi.Controller: collect a one-shot completion
