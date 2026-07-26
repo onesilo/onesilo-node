@@ -82,11 +82,16 @@ const (
 )
 
 // Observe records an app identity key seen during a handshake for account,
-// and reports how it relates to what's already pinned. A *different* key for
-// an account that already has a verified key is rejected with
-// ErrSafetyNumberChanged; the caller must force re-verification and only then
-// call Replace. A different key for an account with only an unverified prior
-// key is treated as a fresh first contact (the unverified record is replaced).
+// and reports how it relates to what's already pinned:
+//
+//   - The same key seen before → PinKnownVerified / PinKnownUnverified.
+//   - A different key while the account already has a *verified* key →
+//     ErrSafetyNumberChanged (a hard stop; the operator must re-verify the new
+//     key with Verify, which then supersedes the old one).
+//   - Otherwise → PinFirstContact, recorded unverified. Any prior *unverified*
+//     keys for the same account are evicted first, so at most one pending
+//     pairing per account is retained (the newest attempt supersedes stale
+//     ones and the store can't grow unbounded from repeated first contacts).
 func (s *PinStore) Observe(accountID, appIDPubB64 string) (PinStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -104,7 +109,14 @@ func (s *PinStore) Observe(accountID, appIDPubB64 string) (PinStatus, error) {
 			return PinFirstContact, ErrSafetyNumberChanged
 		}
 	}
-	// First contact: record it as unverified.
+	// First contact. Evict any stale *unverified* keys for this account (only
+	// one pending pairing is meaningful at a time); verified keys, if any,
+	// were already handled by the safety-number check above.
+	for k, d := range s.devices {
+		if d.AccountID == accountID && !d.Verified {
+			delete(s.devices, k)
+		}
+	}
 	s.devices[pinKey(accountID, appIDPubB64)] = pinnedDevice{
 		AccountID:   accountID,
 		AppIDPubB64: appIDPubB64,

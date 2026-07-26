@@ -39,6 +39,17 @@ type HTTPKeySource struct {
 	keys        ECPublicKeys
 	fetchedAt   time.Time
 	lastAttempt time.Time
+	// inflight coalesces concurrent refreshes: while one fetch is running,
+	// other callers wait on it and share its result instead of each firing
+	// their own request (no thundering herd on TTL expiry or a kid-miss burst).
+	inflight *fetchCall
+}
+
+// fetchCall is one in-flight JWKS fetch that concurrent callers share.
+type fetchCall struct {
+	done chan struct{}
+	keys ECPublicKeys
+	err  error
 }
 
 // NewHTTPKeySource builds a JWKS-backed key source. baseURL is resolved on
@@ -99,16 +110,47 @@ func (s *HTTPKeySource) KeysForKid(ctx context.Context, kid string) (ECPublicKey
 	return s.refresh(ctx)
 }
 
+// refresh fetches the JWKS, coalescing concurrent calls: the first caller
+// becomes the leader and performs the single network request; others wait on
+// the same fetchCall and share its result (or bail if their own ctx is
+// cancelled first). On success the cache and fetch time are updated.
 func (s *HTTPKeySource) refresh(ctx context.Context) (ECPublicKeys, error) {
+	s.mu.Lock()
+	if call := s.inflight; call != nil {
+		s.mu.Unlock()
+		select {
+		case <-call.done:
+			return call.keys, call.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	call := &fetchCall{done: make(chan struct{})}
+	s.inflight = call
+	s.lastAttempt = s.now()
+	s.mu.Unlock()
+
+	keys, err := s.fetch(ctx)
+
+	s.mu.Lock()
+	if err == nil {
+		s.keys = keys
+		s.fetchedAt = s.now()
+	}
+	s.inflight = nil
+	s.mu.Unlock()
+
+	call.keys, call.err = keys, err
+	close(call.done)
+	return keys, err
+}
+
+// fetch performs one JWKS GET and parse with no shared-state mutation.
+func (s *HTTPKeySource) fetch(ctx context.Context) (ECPublicKeys, error) {
 	base := strings.TrimRight(s.baseURL(), "/")
 	if base == "" {
 		return nil, fmt.Errorf("control plane URL is not configured; cannot fetch assertion keys")
 	}
-
-	s.mu.Lock()
-	s.lastAttempt = s.now()
-	s.mu.Unlock()
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+jwksPath, nil)
 	if err != nil {
 		return nil, err
@@ -126,14 +168,5 @@ func (s *HTTPKeySource) refresh(ctx context.Context) (ECPublicKeys, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading JWKS: %w", err)
 	}
-	keys, err := ParseJWKS(body)
-	if err != nil {
-		return nil, err
-	}
-
-	s.mu.Lock()
-	s.keys = keys
-	s.fetchedAt = s.now()
-	s.mu.Unlock()
-	return keys, nil
+	return ParseJWKS(body)
 }
