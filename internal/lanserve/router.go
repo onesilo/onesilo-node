@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/onesilo/silo-node/internal/compute/ollama"
+	"github.com/onesilo/silo-node/internal/pairing"
 )
 
 // ComputeBackend is the slice of the compute capability the LAN router
@@ -26,6 +27,27 @@ type Session struct {
 
 	genMu     sync.Mutex
 	genCancel context.CancelFunc
+
+	// pairing state for this connection (automated ECDH pairing). Once a
+	// pair_hello arrives, pairStarted latches true and the connection is
+	// handshake-only — it can never downgrade to the legacy file pairing key.
+	pairMu        sync.Mutex
+	pairResponder *pairing.Responder
+	pairStarted   bool
+	sessionKey    []byte // per-connection key after a completed handshake
+	pairVerified  bool
+	pairAccountID string
+	pairAppIDPub  string
+}
+
+// pairingKey returns the connection's active E2E key and whether the
+// connection is in handshake-only mode. When handshake-only, the caller must
+// not fall back to the file pairing key (no downgrade). The bool reports
+// whether a handshake has started on this connection.
+func (s *Session) pairingKey() (key []byte, handshakeOnly bool) {
+	s.pairMu.Lock()
+	defer s.pairMu.Unlock()
+	return s.sessionKey, s.pairStarted
 }
 
 // NewSession wraps a frame-write function (one call per WebSocket text
@@ -85,9 +107,12 @@ func (s *Session) CancelGeneration() {
 // stay unencrypted; everything else is decrypted with the pairing key and
 // routed by inner "type". Port of SiloMac's MessageRouter.
 type Router struct {
-	key     func() []byte // current pairing key, nil when unpaired
+	key     func() []byte // current file pairing key, nil when unpaired
 	compute ComputeBackend
 	logger  *slog.Logger
+	// pairer enables automated ECDH pairing (per-connection keys). Nil keeps
+	// the router on the legacy file-key path only.
+	pairer *Pairer
 
 	// wg tracks generation goroutines so tests and shutdown can wait.
 	wg sync.WaitGroup
@@ -99,6 +124,9 @@ type Router struct {
 func NewRouter(key func() []byte, compute ComputeBackend, logger *slog.Logger) *Router {
 	return &Router{key: key, compute: compute, logger: logger}
 }
+
+// SetPairer enables automated pairing on the router (called before Start).
+func (r *Router) SetPairer(p *Pairer) { r.pairer = p }
 
 // Wait blocks until all in-flight generations have finished.
 func (r *Router) Wait() { r.wg.Wait() }
@@ -119,7 +147,23 @@ func (r *Router) Handle(ctx context.Context, s *Session, frame []byte) {
 		return
 	}
 
-	key := r.key()
+	// Key selection. A connection that has begun an automated handshake is
+	// handshake-only: it uses its per-connection session key and must never
+	// fall back to the file pairing key (no downgrade). A connection that
+	// never handshook uses the legacy file key.
+	sessionKey, handshakeOnly := s.pairingKey()
+	var key []byte
+	switch {
+	case sessionKey != nil:
+		key = sessionKey
+	case handshakeOnly:
+		// Handshake started but not completed: an encrypted frame here is out
+		// of order. Do not silently fall back to the file key.
+		s.sendJSON(ctx, newError("Pairing handshake not complete", CodeNoKey))
+		return
+	default:
+		key = r.key()
+	}
 	if key == nil {
 		s.sendJSON(ctx, newError(
 			"Pairing required: enter this iPhone's pairing key in Silo → Settings → Sharing on this device",
@@ -143,14 +187,23 @@ func (r *Router) Handle(ctx context.Context, s *Session, frame []byte) {
 	r.routeInner(ctx, s, key, *probe.UserID, plaintext)
 }
 
-// handlePlain answers a plain {"type":"health_check"} probe (pre-pairing
-// connectivity check); anything else plain is INVALID_FORMAT.
+// handlePlain answers plaintext frames that precede the encrypted phase: the
+// {"type":"health_check"} connectivity probe and the automated-pairing
+// handshake frames (pair_hello / pair_confirm). Anything else plain is
+// INVALID_FORMAT.
 func (r *Router) handlePlain(ctx context.Context, s *Session, frame []byte) {
 	var msg map[string]any
 	if err := json.Unmarshal(frame, &msg); err == nil {
-		if t, _ := msg["type"].(string); t == "health_check" {
+		switch t, _ := msg["type"].(string); t {
+		case "health_check":
 			content, _ := msg["content"].(string)
 			s.sendJSON(ctx, HealthCheckResponse{Type: "health_check_response", Content: "pong: " + content})
+			return
+		case pairing.FrameHello:
+			r.handleHello(ctx, s, frame)
+			return
+		case pairing.FrameConfirm:
+			r.handleConfirm(ctx, s, frame)
 			return
 		}
 	}
@@ -179,6 +232,18 @@ func (r *Router) routeInner(ctx context.Context, s *Session, key []byte, userID 
 		})
 
 	case "user_message":
+		// First-contact pairings are held until their SAS is confirmed: no
+		// inference runs to an unverified peer. health_check still works so
+		// the app can stay connected while the operator compares the code.
+		if !r.sessionInferenceAllowed(s) {
+			s.sendEncrypted(ctx, key, userID, ErrorMessage{
+				Type:        "error",
+				Error:       "Pairing not yet verified — compare the security code shown in the app with the node's admin UI, then confirm it there.",
+				Code:        CodePairingUnverified,
+				Recoverable: true,
+			})
+			return
+		}
 		var msg UserMessage
 		if err := json.Unmarshal(plaintext, &msg); err != nil {
 			s.sendJSON(ctx, newError("Failed to route message: "+err.Error(), ""))

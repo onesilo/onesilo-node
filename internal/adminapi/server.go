@@ -30,6 +30,13 @@ type Controller interface {
 	SetJWT(token string)
 	// SetPairingKey persists the LAN pairing key (64 hex chars).
 	SetPairingKey(hexKey string) error
+	// PendingPairings lists automated-pairing sessions awaiting SAS
+	// confirmation (empty when automated pairing is off or none are pending).
+	PendingPairings() []PairingPending
+	// VerifyPairing confirms a pending pairing's SAS, trusting that app
+	// identity key for this and future connections. Errors if there is no
+	// such pending pairing (or automated pairing is off).
+	VerifyPairing(accountID, appIDPub string) error
 	// Generate runs a one-shot completion on the node's local model and
 	// returns the full text plus the model tag used (POST
 	// /v1/compute/generate). Errors when the compute capability is not
@@ -55,6 +62,15 @@ type Status struct {
 	// here so the desktop app / control plane can read it; the admin API
 	// is localhost-only and token-authenticated.
 	NodeKey string `json:"node_key,omitempty"`
+}
+
+// PairingPending is one automated-pairing session awaiting SAS confirmation.
+// The operator compares SAS with the code shown in the app, then POSTs to
+// /v1/pairing/verify to trust the key.
+type PairingPending struct {
+	AccountID string `json:"account_id"`
+	AppIDPub  string `json:"app_id_pub"`
+	SAS       string `json:"sas"`
 }
 
 // LANStatus is the LAN server's live state.
