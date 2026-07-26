@@ -239,14 +239,45 @@ Three distinct mechanisms, three distinct jobs:
   payload). It never leaves your machines and is not an authorization
   mechanism. `internal/memory` is forbidden from touching it.
 - **Node key** (`data_dir/node.key`) — bearer credential for the memory
-  HTTP API, distinct from the pairing key by design.
+  HTTP API, distinct from the pairing key by design. It is **full memory
+  access**: any holder can remember/recall/forget in any silo on the node,
+  so treat it as a high-value secret. Comparisons are constant-time over
+  SHA-256 digests (no length leak); the memory API is fail-closed.
 - **Per-silo authorization** — which silos a caller may recall from or
   remember into is **control-plane policy**, decided server-side per
   request. The node never makes authorization decisions from the pairing
   key or tunnel reachability.
 
-Also: the admin API binds loopback only and fails closed without its token;
-the pairing key and device id are written `0600` under `data_dir`.
+**Encryption at rest.** Memory content is sealed with **AES-256-GCM** under
+a per-node key at `data_dir/memory.key` (0600), a fresh random nonce per
+record, and the silo id bound in as additional authenticated data — so a
+stored blob cannot be decrypted under, or moved to, a different silo, and
+tampering fails the GCM tag. The FTS5 keyword index is contentless
+(`content=''`), so no plaintext leaks through it. Reading `memory.db`
+directly yields only ciphertext.
+
+**Transport.** In gateway mode the control-plane URL must be `https://`
+(loopback `http://` is allowed for local dev), and OAuth discovery
+endpoints are pinned to the issuer's origin and required to be https — so
+authorization codes, PKCE verifiers, and refresh tokens never transit
+plaintext or reach an attacker-chosen host. Credential files are written
+atomically (temp + rename) so a crash can't truncate them.
+
+**Admin API.** Binds loopback only, fails closed without its token, and
+enforces a loopback `Host` allowlist (defense-in-depth against
+DNS-rebinding). The embedded UI's static assets are unauthenticated (the
+server is loopback-only) but every API call it makes carries the token.
+
+**LAN server.** The memory/relay port is on `0.0.0.0` for on-network use,
+so it caps request-body size, clamps recall `limit`, bounds concurrent
+WebSocket connections, and applies an idle read deadline. The gateway relay
+forwards only the node's own bearer token upstream — it strips
+client-supplied `Cookie`/`X-Forwarded-*`/`Forwarded` headers and restricts
+methods and paths.
+
+The data directory itself is `0700` (repaired at startup if pre-existing);
+`oauth.json`, `node.key`, `memory.key`, `admin.token`, `pairing.key`, and
+the device id are all written `0600`.
 
 ## Development
 

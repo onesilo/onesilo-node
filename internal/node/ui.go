@@ -101,7 +101,7 @@ func (n *Node) StartPull(model string) error {
 	if n.pullState != nil && n.pullState.Status == "pulling" {
 		inFlight := n.pullState.Model
 		n.pullMu.Unlock()
-		return fmt.Errorf("a pull of %s is already in progress", inFlight)
+		return fmt.Errorf("%w (pulling %s)", adminapi.ErrPullInProgress, inFlight)
 	}
 	n.pullState = &adminapi.PullState{Model: model, Status: "pulling"}
 	n.pullMu.Unlock()

@@ -119,7 +119,43 @@ func discoverOAuth(ctx context.Context, client *http.Client, base string) (oauth
 	if meta.AuthorizationEndpoint == "" || meta.TokenEndpoint == "" || meta.RegistrationEndpoint == "" {
 		return meta, errors.New("discovery document is missing required endpoints")
 	}
+	// Pin the discovered endpoints to the issuer's origin. Without this, a
+	// hostile or MITM'd discovery document could point token_endpoint at an
+	// attacker host — the node would then POST its PKCE verifier and, on
+	// every future refresh, its refresh token there. The token_endpoint is
+	// persisted into oauth.json, so a one-time bad discovery would leak
+	// credentials indefinitely (RFC 8414 §3.3).
+	for name, ep := range map[string]string{
+		"authorization_endpoint": meta.AuthorizationEndpoint,
+		"token_endpoint":         meta.TokenEndpoint,
+		"registration_endpoint":  meta.RegistrationEndpoint,
+	} {
+		if err := sameSecureOrigin(base, ep); err != nil {
+			return meta, fmt.Errorf("discovery %s is untrusted: %w", name, err)
+		}
+	}
 	return meta, nil
+}
+
+// sameSecureOrigin verifies endpoint shares issuer's scheme+host+port and,
+// for non-loopback issuers, is https. Loopback http is tolerated for dev.
+func sameSecureOrigin(issuer, endpoint string) error {
+	iu, err := url.Parse(issuer)
+	if err != nil {
+		return fmt.Errorf("bad issuer URL: %w", err)
+	}
+	eu, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("bad endpoint URL: %w", err)
+	}
+	loopback := iu.Hostname() == "localhost" || iu.Hostname() == "127.0.0.1" || iu.Hostname() == "::1"
+	if eu.Scheme != "https" && !(loopback && eu.Scheme == "http") {
+		return fmt.Errorf("endpoint %q must be https", endpoint)
+	}
+	if eu.Scheme != iu.Scheme || eu.Host != iu.Host {
+		return fmt.Errorf("endpoint %q is not same-origin as issuer %q", endpoint, issuer)
+	}
+	return nil
 }
 
 func registerClient(ctx context.Context, client *http.Client, endpoint, deviceName, redirectURI string) (string, error) {

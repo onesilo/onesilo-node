@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -184,6 +185,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("control_plane.auth_mode must be one of %q, %q or %q, got %q",
 			AuthModeJWT, AuthModeAPIKey, AuthModeOAuth, c.ControlPlane.AuthMode)
 	}
+	// A gateway node sends OAuth codes, refresh tokens, and bearer JWTs to
+	// the control plane, so its URL must be https (loopback http is allowed
+	// for local development against a dev control plane). A local node never
+	// contacts the control plane, so its URL is not security-sensitive.
+	if c.Mode == ModeGateway {
+		if err := requireSecureURL("control_plane.url", c.ControlPlane.URL); err != nil {
+			return err
+		}
+	}
 	switch c.Tunnel.Mode {
 	case TunnelModeOff, TunnelModeQuick, TunnelModeExternal:
 	default:
@@ -204,6 +214,33 @@ func (c *Config) Validate() error {
 		return err
 	}
 	return nil
+}
+
+// requireSecureURL accepts https:// URLs, plus http:// only for loopback
+// hosts (localhost / 127.0.0.1 / ::1) so local dev still works. Anything
+// else — plaintext http to a remote host — would expose credentials on the
+// wire and is rejected.
+func requireSecureURL(name, raw string) error {
+	if raw == "" {
+		return fmt.Errorf("%s must not be empty in gateway mode", name)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%s is not a valid URL: %w", name, err)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		host := u.Hostname()
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			return nil
+		}
+		return fmt.Errorf("%s must use https:// for non-loopback hosts (got plaintext %q); "+
+			"http:// is only allowed for localhost dev", name, raw)
+	default:
+		return fmt.Errorf("%s must be an http(s) URL, got scheme %q", name, u.Scheme)
+	}
 }
 
 func validPort(name string, p int) error {

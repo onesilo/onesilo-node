@@ -87,6 +87,11 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating data dir %s: %w", dataDir, err)
 	}
+	// MkdirAll won't tighten a pre-existing dir; repair loose perms so the
+	// directory holding every node secret is never group/world-accessible.
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		return nil, fmt.Errorf("securing data dir %s: %w", dataDir, err)
+	}
 
 	// Node key: authenticates the memory API (X-Silo-Node-Key); created on
 	// first start, surfaced via admin GET /v1/status.
@@ -387,10 +392,15 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 		siloCount = len(silos)
 	}
 	registered, deviceID := n.regMgr.Status()
+	// oauth_signed_in should reflect a *usable* credential: a live access
+	// token, or an expired one we can still refresh. An expired token with
+	// no refresh token is effectively signed out.
 	oauthSignedIn := false
 	if dataDir, err := cfg.ResolvedDataDir(); err == nil {
-		if _, err := controlplane.LoadOAuthCredential(dataDir); err == nil {
-			oauthSignedIn = true
+		if cred, err := controlplane.LoadOAuthCredential(dataDir); err == nil {
+			if cred.RefreshToken != "" || cred.ExpiresAt.IsZero() || cred.ExpiresAt.After(time.Now()) {
+				oauthSignedIn = true
+			}
 		}
 	}
 	tunnelURL := n.tunnelURL()

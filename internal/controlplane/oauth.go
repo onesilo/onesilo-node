@@ -63,7 +63,26 @@ func SaveOAuthCredential(dataDir string, cred OAuthCredential) error {
 		return err
 	}
 	path := filepath.Join(dataDir, OAuthCredentialFile)
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
+	// Atomic write (temp + rename): a crash mid-refresh must never leave a
+	// truncated credential that locks the node out of its grant.
+	tmp, err := os.CreateTemp(dataDir, ".oauth-*")
+	if err != nil {
+		return fmt.Errorf("writing oauth credential: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("writing oauth credential: %w", err)
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		return fmt.Errorf("writing oauth credential: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("writing oauth credential: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("writing oauth credential: %w", err)
 	}
 	return nil
