@@ -3,8 +3,41 @@ package controlplane
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
+
+// TestRegisterPaymentRequired verifies a 402 from the destinations API (remote
+// access needs a paid plan) backs off on a long interval, flags the manager,
+// and leaves the node unregistered — it keeps serving locally.
+func TestRegisterPaymentRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusPaymentRequired)
+	}))
+	defer srv.Close()
+
+	m := NewManager(
+		newTestClient(srv.URL, staticToken("tok")),
+		t.TempDir(),
+		func() string { return "dev" },
+		func() string { return "" },
+		func() string { return "" },
+		func() []CapabilityProbe { return nil },
+		slog.New(slog.DiscardHandler),
+	)
+
+	wait := m.register(context.Background(), "https://x.trycloudflare.com", []string{"llm_inference"})
+	if wait != subscriptionRetryInterval {
+		t.Fatalf("want backoff %v, got %v", subscriptionRetryInterval, wait)
+	}
+	if !m.SubscriptionBlocked() {
+		t.Fatal("expected SubscriptionBlocked() true after a 402")
+	}
+	if registered, _ := m.Status(); registered {
+		t.Fatal("node should not be registered after a 402")
+	}
+}
 
 type fakeProbe struct {
 	name    string

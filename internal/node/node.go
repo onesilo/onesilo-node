@@ -461,10 +461,11 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 		Capabilities:  caps,
 		Tunnel:        adminapi.TunnelStatus{Mode: cfg.Tunnel.Mode, URL: tunnelURL},
 		Registration: adminapi.RegistrationStatus{
-			Registered:    registered,
-			DeviceID:      deviceID,
-			AuthMode:      cfg.ControlPlane.AuthMode,
-			OAuthSignedIn: oauthSignedIn,
+			Registered:           registered,
+			DeviceID:             deviceID,
+			AuthMode:             cfg.ControlPlane.AuthMode,
+			OAuthSignedIn:        oauthSignedIn,
+			SubscriptionRequired: n.regMgr.SubscriptionBlocked(),
 		},
 		LAN: adminapi.LANStatus{
 			Published: n.lanCap.Published(),
