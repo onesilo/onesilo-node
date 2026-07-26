@@ -14,7 +14,8 @@ wizard):
   to the One Silo control plane**. Tunnels are rejected by config
   validation in this mode — there is nothing to phone home to.
 - **`gateway`** — a relay to the One Silo control plane. The node connects
-  with its own credentials (an `sc_` API key or a desktop-pushed JWT) and
+  with its own credentials (an OAuth sign-in from `silo-node setup`, an
+  `sc_` API key, or a desktop-pushed JWT) and
   exposes the cloud surface — **cloud silos, connectors, and the MCP
   gateway** — to local clients at `/v1/cloud/*` on `lan.port`,
   authenticated by the node key. Local clients get the full One Silo
@@ -70,9 +71,14 @@ export SILO_API_KEY="sc_..."   # gateway mode only — from your Silo account
   pulls the default model, so compute works with nothing pre-installed;
 - optionally enables device memory (pulling the embedding model for hybrid
   recall);
-- gateway mode only: optionally turns on the Cloudflare quick tunnel,
-  downloading cloudflared the same way, and switches auth to an `sc_` API
-  key;
+- gateway mode only: optionally turns on the Cloudflare quick tunnel
+  (downloading cloudflared the same way), then **signs you in to One
+  Silo** — a browser OAuth flow, after which the node holds its own
+  refreshable credential (`~/.silo-node/oauth.json`, 0600) and appears in
+  your [dashboard connections](https://dashboard.onesilo.com/connections),
+  just like the Silo iOS app. No account yet? The wizard points you to
+  [onesilo.com](https://onesilo.com) to create one. An `sc_` API key
+  remains the headless fallback;
 - writes it all to `~/.silo-node/config.toml`.
 
 Re-running `setup` is safe — it keeps previous choices as defaults. Check
@@ -100,7 +106,7 @@ Precedence: **CLI flags > `SILO_NODE_*` env vars > TOML file > defaults**.
 | `log` | `format` / `level` | `text` / `info` | `json` for shippers |
 | `capabilities` | `memory`, `compute` | `false` | independently toggled |
 | `control_plane` | `url` | `https://api.onesilo.com` | |
-| | `auth_mode` | `jwt` | `jwt` (desktop-pushed) or `api_key` (`SILO_API_KEY`) |
+| | `auth_mode` | `jwt` | `jwt` (desktop-pushed), `api_key` (`SILO_API_KEY`), or `oauth` (setup sign-in) |
 | | `device_name` | hostname | shown in Silo apps |
 | `memory` | `embed_model` | `nomic-embed-text` | Ollama embedding model for hybrid recall |
 | `ollama` | `host` | `http://127.0.0.1:11434` | |
@@ -194,9 +200,11 @@ and the node never opens a connection to the control plane.
 
 Three distinct mechanisms, three distinct jobs:
 
-- **Connection auth (JWT / API key)** — authenticates this node *to the
-  control plane*. Either a short-lived Clerk JWT pushed by the desktop app,
-  or an `sc_` API key. This is identity, nothing more.
+- **Connection auth (OAuth / JWT / API key)** — authenticates this node
+  *to the control plane*. Either the node's own OAuth grant from the setup
+  sign-in (refresh token at `data_dir/oauth.json`, 0600, revocable from
+  the dashboard), a short-lived Clerk JWT pushed by the desktop app, or an
+  `sc_` API key. This is identity, nothing more.
 - **Device pairing key** — confidentiality layer for direct LAN
   connections between your own devices (AES-256-GCM on every WebSocket
   payload). It never leaves your machines and is not an authorization

@@ -33,6 +33,11 @@ const (
 const (
 	AuthModeJWT    = "jwt"
 	AuthModeAPIKey = "api_key"
+	// AuthModeOAuth uses the credential stored by the `silo-node setup`
+	// sign-in step (<data_dir>/oauth.json): the node holds its own OAuth
+	// grant — like the Silo iOS app — and appears as a connection in the
+	// owner's dashboard. Tokens refresh automatically.
+	AuthModeOAuth = "oauth"
 )
 
 // Config is the full silo-node configuration.
@@ -174,10 +179,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("log.level must be one of debug|info|warn|error, got %q", c.Log.Level)
 	}
 	switch c.ControlPlane.AuthMode {
-	case AuthModeJWT, AuthModeAPIKey:
+	case AuthModeJWT, AuthModeAPIKey, AuthModeOAuth:
 	default:
-		return fmt.Errorf("control_plane.auth_mode must be %q or %q, got %q",
-			AuthModeJWT, AuthModeAPIKey, c.ControlPlane.AuthMode)
+		return fmt.Errorf("control_plane.auth_mode must be one of %q, %q or %q, got %q",
+			AuthModeJWT, AuthModeAPIKey, AuthModeOAuth, c.ControlPlane.AuthMode)
 	}
 	switch c.Tunnel.Mode {
 	case TunnelModeOff, TunnelModeQuick, TunnelModeExternal:

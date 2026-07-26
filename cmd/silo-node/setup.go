@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/onesilo/silo-node/internal/compute/ollama"
 	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/silo-node/internal/controlplane"
 	"github.com/onesilo/silo-node/internal/gateway"
 	"github.com/onesilo/silo-node/internal/tunnel"
 )
@@ -145,12 +147,7 @@ func runSetup(args []string) int {
 			cfg.Tunnel.Mode = config.TunnelModeOff
 		}
 
-		if cfg.ControlPlane.AuthMode == config.AuthModeJWT {
-			p.printf("\nControl plane\n")
-			if p.confirm("  Authenticate with a One Silo API key (sc_..., the standalone default)?", true) {
-				cfg.ControlPlane.AuthMode = config.AuthModeAPIKey
-			}
-		}
+		setupSignIn(ctx, &cfg, dataDir, p)
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -171,12 +168,83 @@ func runSetup(args []string) int {
 			cfg.LAN.Port, gateway.RoutePrefix)
 		p.printf("  tunnel:  %s\n", cfg.Tunnel.Mode)
 	}
+	if isGateway {
+		p.printf("  auth:    %s\n", authSummary(cfg))
+	}
 	p.printf("\nStart the node:\n\n")
 	if isGateway && cfg.ControlPlane.AuthMode == config.AuthModeAPIKey {
 		p.printf("  export SILO_API_KEY=\"sc_...\"   # from your One Silo account\n")
 	}
 	p.printf("  silo-node\n")
 	return 0
+}
+
+// setupSignIn authenticates a gateway node to One Silo. The default is the
+// OAuth sign-in (the node gets its own credential and shows up in the
+// dashboard, like the Silo iOS app); an sc_ API key is the fallback for
+// headless machines or when sign-in fails.
+func setupSignIn(ctx context.Context, cfg *config.Config, dataDir string, p *prompter) {
+	p.printf("\nControl plane sign-in\n")
+	if _, err := controlplane.LoadOAuthCredential(dataDir); err == nil {
+		cfg.ControlPlane.AuthMode = config.AuthModeOAuth
+		p.printf("  already signed in (%s); this node appears in your dashboard connections\n",
+			filepath.Join(dataDir, controlplane.OAuthCredentialFile))
+		return
+	}
+	p.printf("  A gateway node connects with its own One Silo credential, like the Silo iOS app.\n")
+
+	if p.assumeYes {
+		// Non-interactive runs can't complete a browser flow.
+		cfg.ControlPlane.AuthMode = config.AuthModeAPIKey
+		p.printf("  non-interactive: skipping browser sign-in — using an sc_ API key instead\n")
+		p.printf("  (re-run `silo-node setup` without -yes to sign in)\n")
+		return
+	}
+
+	if p.confirm("  Sign in to One Silo now (opens your browser)?", true) {
+		err := signIn(ctx, cfg.ControlPlane.URL, dataDir, deviceNameFor(cfg), p.out)
+		if err == nil {
+			cfg.ControlPlane.AuthMode = config.AuthModeOAuth
+			p.printf("  signed in — credential stored at %s (0600)\n",
+				filepath.Join(dataDir, controlplane.OAuthCredentialFile))
+			p.printf("  this node now appears in your dashboard: https://dashboard.onesilo.com/connections\n")
+			return
+		}
+		if errors.Is(err, errUserNotFound) {
+			p.printf("  ! user not found — please create an account at https://onesilo.com first,\n")
+			p.printf("  ! then re-run `silo-node setup` to sign in\n")
+		} else {
+			p.printf("  ! sign-in failed: %s\n", err)
+			p.printf("  ! no One Silo account? Create one at https://onesilo.com and re-run `silo-node setup`\n")
+		}
+	}
+
+	if p.confirm("  Use an sc_ API key instead?", true) {
+		cfg.ControlPlane.AuthMode = config.AuthModeAPIKey
+	}
+}
+
+// deviceNameFor mirrors the node's device-name fallback (config, then
+// hostname) for the sign-in client name.
+func deviceNameFor(cfg *config.Config) string {
+	if cfg.ControlPlane.DeviceName != "" {
+		return cfg.ControlPlane.DeviceName
+	}
+	if host, err := os.Hostname(); err == nil {
+		return host
+	}
+	return "silo-node"
+}
+
+func authSummary(cfg config.Config) string {
+	switch cfg.ControlPlane.AuthMode {
+	case config.AuthModeOAuth:
+		return "signed in (oauth credential in data dir)"
+	case config.AuthModeAPIKey:
+		return "sc_ API key (SILO_API_KEY env)"
+	default:
+		return "jwt (pushed by the desktop app)"
+	}
 }
 
 func computeSummary(cfg config.Config) string {
