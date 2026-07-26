@@ -24,6 +24,11 @@ type fakeController struct {
 	generateErr     error
 	lastPrompt      string
 	lastTemperature float64
+
+	pendingPairings  []PairingPending
+	verifyPairingErr error
+	verifiedAccount  string
+	verifiedAppIDPub string
 }
 
 func (f *fakeController) Status(context.Context) Status {
@@ -46,7 +51,17 @@ func (f *fakeController) Generate(_ context.Context, prompt string, temperature 
 	return "distilled: " + prompt, "test-model:3b", nil
 }
 func (f *fakeController) SetPairingKey(key string) error { f.pairingKey = key; return nil }
-func (f *fakeController) Shutdown()                      { f.shutdowns.Add(1) }
+func (f *fakeController) PendingPairings() []PairingPending {
+	return f.pendingPairings
+}
+func (f *fakeController) VerifyPairing(accountID, appIDPub string) error {
+	if f.verifyPairingErr != nil {
+		return f.verifyPairingErr
+	}
+	f.verifiedAccount, f.verifiedAppIDPub = accountID, appIDPub
+	return nil
+}
+func (f *fakeController) Shutdown() { f.shutdowns.Add(1) }
 
 func newTestServer(t *testing.T, token string) (*httptest.Server, *fakeController) {
 	t.Helper()

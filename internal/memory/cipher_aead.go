@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/onesilo/silo-node/internal/fsutil"
 )
 
 // memoryKeyFile holds the per-node memory data key (0600).
@@ -86,33 +88,8 @@ func loadOrCreateMemoryKey(dataDir string) ([]byte, error) {
 	if _, err := crand.Read(key); err != nil {
 		return nil, fmt.Errorf("generating memory key: %w", err)
 	}
-	if err := writeFileAtomic(path, []byte(hex.EncodeToString(key)), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomic(path, []byte(hex.EncodeToString(key)), 0o600); err != nil {
 		return nil, fmt.Errorf("writing memory key: %w", err)
 	}
 	return key, nil
-}
-
-// writeFileAtomic writes data to a temp file in the same directory and
-// renames it into place, so a crash mid-write can never leave a truncated
-// secret. The temp file is created with perm from the start (never wider).
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // no-op after a successful rename
-	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
 }

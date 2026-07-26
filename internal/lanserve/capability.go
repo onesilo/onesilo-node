@@ -28,6 +28,7 @@ type Capability struct {
 	keySource    func() []byte
 	newAnnouncer func() Announcer
 	onClients    func(int)
+	pairer       *Pairer
 	logger       *slog.Logger
 
 	mu        sync.Mutex
@@ -91,6 +92,7 @@ func (c *Capability) Start(ctx context.Context) error {
 	}
 
 	router := NewRouter(c.keySource, c.compute, c.logger.With("component", "router"))
+	router.SetPairer(c.pairer)
 	server := NewServer(c.getCfg().LAN.Port, router, c.apiHandler, c.onClients, c.logger)
 	if err := server.Start(ctx); err != nil {
 		return err
@@ -143,6 +145,14 @@ func (c *Capability) Healthy(ctx context.Context) (bool, string) {
 // SetOnClients registers a client-count callback (admin status refresh).
 // Must be called before Start.
 func (c *Capability) SetOnClients(fn func(int)) { c.onClients = fn }
+
+// SetPairer enables automated device pairing on the LAN router. Must be
+// called before Start; a nil pairer leaves the router on the file-key path.
+func (c *Capability) SetPairer(p *Pairer) { c.pairer = p }
+
+// Pairer returns the configured pairer (nil when automated pairing is off),
+// so the admin API can list/verify pending pairings.
+func (c *Capability) Pairer() *Pairer { return c.pairer }
 
 // Published reports whether the Bonjour service is currently announced.
 func (c *Capability) Published() bool {
