@@ -8,10 +8,11 @@
 // node key, and content confidentiality at rest is this package's Cipher.
 package memory
 
-// Cipher encrypts memory content at rest, keyed per silo. v1 ships the
-// plaintext passthrough; a real cipher can be swapped in without schema
-// changes because the FTS index is always fed plaintext explicitly at
-// write time (it never derives text from the stored blob).
+// Cipher encrypts memory content at rest, keyed per silo. Production uses
+// aeadCipher (AES-256-GCM, see cipher_aead.go); the swap is schema-free
+// because the FTS index is always fed plaintext explicitly at write time
+// and never derives text from the stored blob, so the blob can be
+// ciphertext with no plaintext leaking through the index.
 type Cipher interface {
 	// Seal encrypts plaintext for storage under the given silo.
 	Seal(siloID string, pt []byte) ([]byte, error)
@@ -19,7 +20,10 @@ type Cipher interface {
 	Open(siloID string, ct []byte) ([]byte, error)
 }
 
-// PlaintextCipher is the v1 no-op cipher: content is stored as-is.
+// PlaintextCipher is a no-op cipher used only in tests that don't exercise
+// at-rest crypto. Production always runs aeadCipher (wired in
+// Capability.Start); content stored through this passthrough is NOT
+// encrypted, so it must never be the production cipher.
 type PlaintextCipher struct{}
 
 // Seal implements Cipher.

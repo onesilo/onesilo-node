@@ -157,6 +157,11 @@ async function exportSilo(siloID) {
   const res = await fetch("/v1/silos/" + encodeURIComponent(siloID) + "/export", {
     headers: { Authorization: "Bearer " + token },
   });
+  if (res.status === 401) {
+    // Match the rest of the UI: a rejected token re-opens the gate.
+    showGate(true);
+    return;
+  }
   if (!res.ok) {
     toast("Export failed (" + res.status + ")", true);
     return;

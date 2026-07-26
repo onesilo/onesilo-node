@@ -109,12 +109,38 @@ func New(port int, adminToken string, ctrl Controller, logger *slog.Logger) *Ser
 	mux := newMux(adminToken, ctrl, logger)
 	return &Server{
 		srv: &http.Server{
-			Handler:           mux,
+			Handler:           requireLoopbackHost(port, mux),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 		port:   port,
 		logger: logger,
 	}
+}
+
+// requireLoopbackHost rejects requests whose Host header is not a loopback
+// name. The server already binds 127.0.0.1, but a DNS-rebinding page can
+// still reach it over the loopback socket with an attacker-chosen Host; an
+// allowlist closes that off before any handler (even the unauthenticated
+// static assets / healthz) runs. Bearer auth already stops rebinding from
+// reaching data, so this is defense in depth.
+func requireLoopbackHost(port int, next http.Handler) http.Handler {
+	allowed := map[string]bool{}
+	for _, h := range []string{"127.0.0.1", "localhost", "::1", "[::1]"} {
+		allowed[h] = true                             // no port
+		allowed[fmt.Sprintf("%s:%d", h, port)] = true // with port
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if !allowed[host] {
+			// Tolerate an explicit port that differs only cosmetically by
+			// splitting host:port and re-checking the host portion.
+			if h, _, err := net.SplitHostPort(host); err != nil || !allowed[h] {
+				http.Error(w, "misdirected request: unexpected Host", http.StatusMisdirectedRequest)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Start binds 127.0.0.1:<port> and serves in a background goroutine.

@@ -259,3 +259,40 @@ func TestModeValidation(t *testing.T) {
 		t.Fatalf("default mode must be local, got %q", cfg.Mode)
 	}
 }
+
+func TestGatewayRequiresSecureControlPlaneURL(t *testing.T) {
+	base := Default()
+	base.Mode = ModeGateway
+
+	cases := []struct {
+		url string
+		ok  bool
+	}{
+		{"https://api.onesilo.com", true},
+		{"http://localhost:8000", true},   // loopback dev allowed
+		{"http://127.0.0.1:8000", true},   // loopback dev allowed
+		{"http://api.onesilo.com", false}, // plaintext to remote — rejected
+		{"ftp://api.onesilo.com", false},  // wrong scheme
+		{"", false},                       // empty in gateway mode
+	}
+	for _, c := range cases {
+		cfg := base
+		cfg.ControlPlane.URL = c.url
+		err := cfg.Validate()
+		if c.ok && err != nil {
+			t.Errorf("control_plane.url %q: unexpected error %v", c.url, err)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("control_plane.url %q: expected rejection, got none", c.url)
+		}
+	}
+
+	// A local node never contacts the control plane, so a plaintext URL is
+	// not a security problem and must not be rejected.
+	local := Default()
+	local.Mode = ModeLocal
+	local.ControlPlane.URL = "http://api.onesilo.com"
+	if err := local.Validate(); err != nil {
+		t.Errorf("local mode should not validate control_plane.url, got %v", err)
+	}
+}

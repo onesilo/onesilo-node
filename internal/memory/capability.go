@@ -54,6 +54,15 @@ func (c *Capability) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Load the at-rest cipher before opening the store: with no usable key
+	// we must not silently fall back to storing plaintext.
+	if _, ok := c.cipher.(*aeadCipher); !ok {
+		aead, err := NewAEADCipher(dataDir)
+		if err != nil {
+			return fmt.Errorf("initializing memory encryption: %w", err)
+		}
+		c.cipher = aead
+	}
 	store, err := OpenStore(filepath.Join(dataDir, "memory.db"))
 	if err != nil {
 		return err

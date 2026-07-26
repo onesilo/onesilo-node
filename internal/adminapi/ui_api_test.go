@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/onesilo/silo-node/internal/config"
@@ -164,7 +165,8 @@ func TestExportSilo(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct != "application/zip" {
 		t.Errorf("Content-Type = %q", ct)
 	}
-	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="personal.silo"` {
+	if cd := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment;") ||
+		!strings.Contains(cd, "personal.silo") {
 		t.Errorf("Content-Disposition = %q", cd)
 	}
 	raw, err := io.ReadAll(resp.Body)
@@ -209,9 +211,34 @@ func TestStartPull(t *testing.T) {
 		t.Errorf("empty model = %d, want 400", resp.StatusCode)
 	}
 
-	ctrl.pullErr = fmt.Errorf("a pull of qwen2.5:7b is already in progress")
+	// An in-progress pull (sentinel error) is a 409 Conflict.
+	ctrl.pullErr = fmt.Errorf("%w (pulling qwen2.5:7b)", ErrPullInProgress)
 	if resp := doReq(t, http.MethodPost, srv.URL+"/v1/models/pull", "tok", `{"model":"other"}`); resp.StatusCode != http.StatusConflict {
 		t.Errorf("concurrent pull = %d, want 409", resp.StatusCode)
+	}
+
+	// Any other StartPull failure (e.g. compute disabled) is a 503, not a
+	// spurious conflict.
+	ctrl.pullErr = fmt.Errorf("compute capability is disabled")
+	if resp := doReq(t, http.MethodPost, srv.URL+"/v1/models/pull", "tok", `{"model":"other"}`); resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("non-conflict pull error = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestContentDisposition(t *testing.T) {
+	// A normal id: plain quoted filename plus filename*.
+	got := contentDisposition("personal.silo")
+	if !strings.Contains(got, `filename=personal.silo`) && !strings.Contains(got, `filename="personal.silo"`) {
+		t.Errorf("normal filename missing: %q", got)
+	}
+	// A hostile id must not break the header: no raw quote or CR/LF survives
+	// into the ASCII fallback.
+	got = contentDisposition("a\"b\r\nX-Evil: 1.silo")
+	if strings.ContainsAny(got, "\r\n") {
+		t.Errorf("CR/LF leaked into header: %q", got)
+	}
+	if strings.Contains(got, `filename=a"b`) {
+		t.Errorf("raw quote leaked into ascii filename: %q", got)
 	}
 }
 
