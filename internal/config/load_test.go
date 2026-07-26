@@ -328,3 +328,14 @@ func TestGatewayRequiresSecureControlPlaneURL(t *testing.T) {
 		t.Errorf("local mode should not validate control_plane.url, got %v", err)
 	}
 }
+
+func TestValidateManagedTunnelMode(t *testing.T) {
+	cfg := Default()
+	cfg.Tunnel.Mode = TunnelModeManaged
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("managed mode should validate: %v", err)
+	}
+	if !cfg.Exposed() {
+		t.Fatal("managed mode should count as exposed")
+	}
+}

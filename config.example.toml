@@ -89,8 +89,11 @@ binary_path = ""
 
 [tunnel]
 # How this node becomes reachable from outside the local network.
-# Requires mode = "gateway" for anything but "off".
 #   "off"      - no public URL; the node never registers with the control plane.
+#   "managed"  - preferred: One Silo provisions a named Cloudflare tunnel with
+#                a stable hostname for this node (paid feature; running the
+#                node locally is always free). The node fetches a run token at
+#                start and spawns `cloudflared tunnel run`.
 #   "quick"    - spawn an ephemeral Cloudflare quick tunnel (`cloudflared
 #                tunnel --url http://localhost:<lan.port>`). The URL changes
 #                on every restart; the node re-registers automatically.
@@ -98,12 +101,12 @@ binary_path = ""
 #                proxy); set external_url to its public https URL.
 mode = "off"
 
-# Optional explicit path to cloudflared (quick mode). Defaults to searching
-# /opt/homebrew/bin, /usr/local/bin, then $PATH.
+# Optional explicit path to cloudflared (managed/quick modes). Defaults to
+# searching /opt/homebrew/bin, /usr/local/bin, then $PATH.
 cloudflared_path = ""
 
-# Required when mode = "external". Note the control plane currently accepts
-# only *.trycloudflare.com / *.cfargotunnel.com hostnames.
+# Required when mode = "external". Note the control plane accepts only
+# *.trycloudflare.com / *.cfargotunnel.com / managed One Silo hostnames.
 external_url = ""
 
 [lan]
