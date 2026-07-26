@@ -47,7 +47,14 @@ func TestComputeGenerateTemperatureOverride(t *testing.T) {
 
 func TestComputeGenerateValidation(t *testing.T) {
 	srv, _ := newTestServer(t, "tok")
-	for _, body := range []string{``, `{}`, `{"prompt": ""}`, `{"prompt": "p", "extra": 1}`} {
+	for _, body := range []string{
+		``,
+		`{}`,
+		`{"prompt": ""}`,
+		`{"prompt": "p", "extra": 1}`,
+		`{"prompt": "p"}{"prompt": "q"}`, // trailing JSON value
+		`{"prompt": "p"} garbage`,        // trailing non-JSON
+	} {
 		resp := doReq(t, http.MethodPost, srv.URL+"/v1/compute/generate", "tok", body)
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("body %q: status = %d, want 400", body, resp.StatusCode)

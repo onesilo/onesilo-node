@@ -2,6 +2,7 @@ package adminapi
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -193,6 +194,11 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 		if err := dec.Decode(&body); err != nil || body.Prompt == "" {
 			writeError(w, http.StatusBadRequest,
 				"expected JSON body {\"prompt\": \"...\", \"temperature\": 0.2?}")
+			return
+		}
+		// Exactly one JSON object: trailing values or garbage are malformed.
+		if err := dec.Decode(new(struct{})); err != io.EOF {
+			writeError(w, http.StatusBadRequest, "request body must be a single JSON object")
 			return
 		}
 		// Low default: local callers (e.g. a Buzz agent distilling

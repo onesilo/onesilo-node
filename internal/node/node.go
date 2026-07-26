@@ -445,7 +445,9 @@ func (n *Node) SetPairingKey(hexKey string) error {
 // local clients — e.g. a Buzz agent distilling conversation privately
 // before anything reaches the control plane — borrow the node's model.
 func (n *Node) Generate(ctx context.Context, prompt string, temperature float64) (string, string, error) {
-	stream, err := n.computeCap.StreamGenerate(ctx, prompt, temperature)
+	// The model is reported by the stream call itself: CurrentModel() can be
+	// refreshed concurrently and might name a model this completion never ran on.
+	stream, model, err := n.computeCap.StreamGenerateModel(ctx, prompt, temperature)
 	if err != nil {
 		return "", "", err
 	}
@@ -456,7 +458,7 @@ func (n *Node) Generate(ctx context.Context, prompt string, temperature float64)
 		}
 		b.WriteString(res.Delta.Response)
 	}
-	return b.String(), n.computeCap.CurrentModel(), nil
+	return b.String(), model, nil
 }
 
 // Shutdown implements adminapi.Controller.
