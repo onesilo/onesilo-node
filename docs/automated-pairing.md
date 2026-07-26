@@ -44,13 +44,28 @@ node and the app. The control plane acts as an **identity directory and
 attestation authority** — it stores and vouches for each device's *public*
 key — but never as key escrow.
 
+> **Security review (2026-07):** the first draft of this protocol
+> authenticated the *signed assertion* but not the *live peer or the
+> channel*, and had no forward secrecy, revocation, or audit logging. This
+> section has been revised to close those gaps; see
+> [Security & SOC 2 considerations](#security--soc-2-considerations) for the
+> finding-by-finding rationale. **Do not implement an earlier revision.**
+
 ### Primitives
 
-- **ECDH: P-256** (`crypto/ecdh.P256` on the node; `SecureEnclave.P256.KeyAgreement`
-  on iOS). P-256 is chosen over X25519 specifically so the app's private key
-  can be **Secure Enclave–resident** (the Enclave does not hold X25519 keys).
-  The node's private key is a `0600` file like its other secrets.
-- **KDF: HKDF-SHA256.**
+- **Static ECDH: P-256** (`crypto/ecdh.P256` on the node;
+  `SecureEnclave.P256.KeyAgreement` on iOS) for the long-term **identity**
+  keys. P-256 is chosen over X25519 specifically so the app's private
+  identity key can be **Secure Enclave–resident** (the Enclave does not hold
+  X25519 keys).
+- **Ephemeral ECDH: P-256**, a fresh keypair per connection on each side, for
+  **forward secrecy**. The final key mixes the ephemeral-ephemeral and
+  static-static shared secrets (a Noise-`IK`/X3DH-style construction): the
+  static keys *authenticate*, the ephemerals give *PFS*, so stealing an
+  identity key later does not decrypt recorded sessions. App ephemerals are
+  disposable and need not be Enclave-resident.
+- **KDF: HKDF-SHA256**, with the **full handshake transcript bound in** (both
+  identity + ephemeral public keys, both nonces, the assertion hash).
 - **AEAD: AES-256-GCM** — the existing envelope `Seal`/`Open`, unchanged.
 
 ### Identity keys
@@ -63,134 +78,233 @@ key — but never as key escrow.
   Enclave; the public key registered with the control plane, bound to the
   Clerk-authenticated user/device.
 
-### Session key derivation
-
-```
-shared      = ECDH(local_priv, peer_pub)                 # 32-byte P-256 x-coord
-session_key = HKDF-SHA256(
-                ikm  = shared,
-                salt = sort(node_device_id, app_device_id) joined,
-                info = "onesilo-pairing-v1",
-                len  = 32,
-              )
-```
-
-`session_key` feeds the existing `Seal`/`Open` directly. Both sides derive
-the identical key; the control plane, having only ever seen public keys,
-cannot.
-
 ### Handshake (over the relay)
 
 The control plane issues the app a short-lived **pairing assertion** —
-signed with the control plane's key (verifiable via the existing OAuth JWKS)
-— binding the app's public key to the target node for the owning account:
+signed `ES256` with the control plane's dedicated pairing key (verifiable via
+JWKS) — binding the app's identity public key to the target node **for the
+account that owns the node**. Assertions are single-use-ish (`exp ≤ 60s`).
 
 ```
-assertion = sign_cp({ app_pubkey, node_device_id, account_id, iat, exp })
+assertion = sign_cp({ app_id_pub, node_device_id, account_id, iat, exp, kid })
 ```
 
-The app already learns the node's public key from destination discovery
-(an authenticated control-plane call). The WS handshake, before the
-encrypted phase, adds two plaintext frames:
+The app learns the node's identity public key from destination discovery (an
+authenticated control-plane call). The handshake, before the encrypted
+phase, is **three** plaintext frames — the node contributes a challenge so
+the exchange is bound to *this* connection, and both sides prove key
+possession before any application data:
 
 ```
-app → node : {"type":"pair_hello","app_pubkey":"<b64>","assertion":"<jwt>","nonce":"<b64>"}
-node → app : {"type":"pair_ack","node_pubkey":"<b64>","nonce":"<b64>"}
+app  → node : pair_hello  { app_id_pub, app_eph_pub, assertion, app_nonce }
+node → app  : pair_ack    { node_id_pub, node_eph_pub, node_nonce }
+app  → node : pair_confirm { mac_app  = HMAC(K, "app"  ‖ transcript) }
+node → app  : (accept)     { mac_node = HMAC(K, "node" ‖ transcript) }
 ```
 
-The node verifies the assertion (control-plane signature via JWKS; `exp`;
-that `node_device_id` is itself) — it already trusts the control plane
-because it is signed in to it — then does `ECDH(node_priv, app_pubkey)`.
-From that point both sides speak the existing AES-256-GCM envelope, keyed by
-the derived `session_key`. No per-connection node→control-plane round trip
-is needed: the signed assertion *is* the attestation.
+The node **must** verify, and reject + audit-log on any failure:
+1. assertion signature (`ES256` only — reject `alg:none`/RS/HS confusion),
+   `exp`, and pinned `kid` against cached JWKS (fail closed);
+2. `assertion.node_device_id == own device_id`; and
+3. **`assertion.account_id == the account this node is registered under`**
+   (the node knows its own account from its control-plane credential — this
+   is the authorization check, not just signature verification).
 
-### Per-connection keys
+Both sides then derive:
 
-Today one global `pairing.key` keys every message. With ECDH each
-connection derives its **own** session key from the peer's public key during
-the handshake and holds it on the session object. This is strictly better —
-a compromised app key exposes only that device's sessions, not all of them.
-The node selects the key path per connection:
+```
+transcript  = SHA256( app_id_pub ‖ node_id_pub ‖ app_eph_pub ‖ node_eph_pub
+                       ‖ app_nonce ‖ node_nonce ‖ SHA256(assertion) )
+ss          = ECDH(id_priv,  peer_id_pub)     # static-static: authenticates
+ee          = ECDH(eph_priv, peer_eph_pub)    # ephemeral-ephemeral: PFS
+session_key = HKDF-SHA256(ikm = ee ‖ ss, salt = transcript,
+                          info = "onesilo-pairing-v1", len = 32)
+```
 
-- `pair_hello` present → verify + ECDH → per-connection session key.
-- no `pair_hello` → fall back to the stored `pairing.key` (LAN QR path,
-  unchanged).
+`session_key` feeds the existing `Seal`/`Open` unchanged. The `pair_confirm`
+MAC is the **key-confirmation** step: a MITM who substituted any public key
+or replayed an assertion derives a different key, so its MAC fails and the
+connection is refused (and logged as a tamper event) rather than silently
+falling back to a wrong-key error. The control plane, having only ever seen
+public keys, cannot derive `session_key`.
+
+### Per-connection keys and no silent downgrade
+
+Each connection derives its **own** `session_key` (held on the session
+object) — strictly better than one global key: a compromised app key exposes
+only that device's sessions. Path selection is by **transport**, not by
+whichever key happens to exist:
+
+- **Control-plane-relayed** connection → the node **requires** a valid
+  `pair_hello` + assertion + confirmation. It **never** falls through to the
+  shared `pairing.key`; a relayed connection that omits the strong path is
+  refused and logged (this closes the downgrade attack where a MITM simply
+  strips `pair_hello`).
+- **LAN** connection → the QR-bootstrapped `pairing.key` path remains as the
+  deliberate zero-trust fallback, unchanged. (It may also be upgraded to the
+  ECDH handshake later — see Open questions.)
+
+The app records that a node is reachable via ECDH and warns on any later
+downgrade (downgrade pinning).
 
 ## Trust model
 
 | Adversary | Can decrypt? | Why |
 |---|---|---|
-| Passive control plane / relay / tunnel | **No** | never sees the session key; only public keys pass through |
+| Passive control plane / relay / tunnel | **No** | never sees the session key; only public keys cross it |
 | Network attacker on the tunnel | **No** | payloads are E2E AES-256-GCM |
-| **Active/malicious control plane** | Only by MITM | it would have to substitute public keys / forge an assertion — see below |
+| Later theft of a long-term identity key | **No** for past sessions | ephemeral DH gives forward secrecy; recorded traffic stays sealed |
+| **Active** control plane, established peer | No (detected) | key-confirmation + transcript-bound KDF + a *pinned* peer key make substitution fail and alarm |
+| **Active** control plane, **first** contact | Only in the TOFU window | before a pin exists, the app learns the node key over the control plane's own channel — see below |
 
-The residual risk is an **active** control plane substituting public keys.
-Two mitigations, matching how Signal/Matrix/WhatsApp handle multi-device:
+The one genuinely hard case is an **active** control plane at **first
+contact**: there is no pin yet, and the node's public key is discovered over
+the control plane itself. Mitigations, matching how Signal/Matrix/WhatsApp
+handle multi-device:
 
-- **TOFU key pinning** (default, automatic): each side pins the peer's
-  identity public key on first sight; a later change forces re-verification.
-- **Optional verification code** (off by default): a Short Authentication
-  String derived from both public keys —
-  `SAS = base10(SHA256(sort(node_pub, app_pub)))[:8]` — shown in both the
-  app and the node's admin UI for a one-time comparison. Matching SASs prove
-  no MITM. Turning this on gives provable zero-trust-against-the-relay.
+- **TOFU key pinning** (always on): each side pins the peer's identity key on
+  first sight; any later change forces re-verification ("safety number
+  changed") and is audit-logged.
+- **Short Authentication String**, computed over the **derived key /
+  transcript** (not the raw static pubkeys, so it also catches ephemeral
+  substitution and downgrade): `SAS = base10(HKDF(session_key, "sas"))[:8]`,
+  shown in both the app and the node's admin UI. **Required on the first
+  relayed pairing** (or bootstrap that first pairing over LAN/QR), optional
+  thereafter. A one-time confirmation is the only thing that closes the
+  first-contact window against an active provider — it is a deliberate,
+  minimal user step, not an escape hatch.
 
-Without verification the guarantee is "as strong as TLS + an
-account-attested identity key" — i.e. trust the identity provider not to
-*actively* attack you. That is the industry-standard posture and a large
-improvement over today's remote story (an operator hand-copying a symmetric
-key, with no protection and no UX).
+After first contact the guarantee is strong (pinned keys + confirmation +
+PFS); the first-contact step is where "fully automatic" and "provable
+zero-trust-against-the-relay" genuinely trade off. **Product decision
+needed:** require the one-time SAS on first relayed pairing (recommended), or
+accept TOFU-only first contact for zero user steps at the cost of an
+unauthenticated first-contact window against an *active* control plane.
 
 ## What changes where
 
 ### onesilo-node
 
-- Generate/persist the P-256 identity key (`<data_dir>/device_identity.key`,
-  `0600`); expose the public key.
-- `controlplane.RegisterRequest` gains `identity_pubkey`.
-- lanserve handshake: accept `pair_hello`, verify the assertion against the
-  control-plane JWKS, ECDH + HKDF → per-connection session key stored on the
-  session; emit `pair_ack`. Fall back to `pairing.key` when absent.
-- Session/router: key becomes per-connection instead of a single file key.
-- Optional: surface the node's identity fingerprint / SAS in the admin UI
-  Settings page for verification.
-- No new setup step required — provisioning is automatic (the identity key
-  is generated like `node.key`).
+- Generate/persist the P-256 **identity** key, **wrapped by the existing
+  `memory.key` / OS keystore** rather than stored raw (`0700` dir); expose
+  the public key. Generate an **ephemeral** P-256 keypair per connection.
+- `controlplane.RegisterRequest` gains `identity_pubkey`; the node is the
+  **only** principal allowed to set its own pubkey.
+- **New inbound verifier** (net-new surface — the node has no inbound
+  JWT/JWKS verifier today): validate assertions `ES256`-only against a pinned
+  issuer/`kid`, cached JWKS, fail-closed.
+- lanserve handshake: `pair_hello` → `pair_ack` → `pair_confirm`; verify
+  signature + `exp` + `node_device_id` + **`account_id == own account`**;
+  ephemeral+static ECDH; transcript-bound HKDF; **require** the strong path
+  on relayed connections (no `pairing.key` fallback); key-confirmation MAC.
+- Session/router: per-connection key; per-key message ceiling / rekey.
+- Surface the node's SAS / identity fingerprint in the admin UI for
+  verification; audit-log pair attempts, verify results, fallbacks, pin
+  changes.
 
 ### onesilo-backend (control plane)
 
-- Store per-account device identity public keys (node destinations + app
-  devices); return the node's `identity_pubkey` in destination discovery.
-- New endpoint: issue a signed **pairing assertion** to an authenticated app
-  for a node it owns (`{app_pubkey, node_device_id, account_id, exp}`).
-- Publish the assertion signing key via the existing OAuth JWKS surface so
-  nodes can verify without new trust anchors.
+- Store per-account device identity public keys; return the node's pubkey in
+  destination discovery. A node's pubkey is settable **only by that
+  authenticated node**; app pubkeys bound to the owning Clerk user/device; a
+  pubkey **change** is a step-up-gated, audit-logged security event.
+- **Pairing-assertion endpoint**: least-privilege (only the account owner,
+  scoped to nodes they own), rate-limited, `exp ≤ 60s`, opaque `account_id`.
+- **Dedicated `ES256` signing key in HSM/KMS** (non-exportable, own `kid`,
+  documented rotation with overlap), separate from the general OAuth key;
+  published via JWKS.
+- **Device revocation**: revoked app/node keys refuse new assertions; a short
+  revocation feed nodes can poll.
+- Ship all pairing/key events to the SOC 2 audit pipeline.
 
-### onesilo-apple
+### onesilo-apple (iOS + SiloDesktop)
 
-- Generate the P-256 identity key in the Secure Enclave; register the public
-  key with the control plane.
-- Fetch the node's public key + request a pairing assertion; ECDH + HKDF;
-  use the derived key with the existing envelope crypto.
-- Optional SAS verification UI + identity-key pinning ("safety number
-  changed" on mismatch).
+- Generate the P-256 identity key in the **Secure Enclave**; disposable
+  ephemeral per connection; register the identity pubkey.
+- Fetch the node's pubkey + request an assertion; run the handshake; use the
+  derived key with the existing envelope crypto.
+- SAS verification UI (required on first relayed pairing), identity-key
+  pinning + "safety number changed" recovery, downgrade warning.
 
 ## Compatibility
 
-Additive and non-breaking. The envelope wire format is unchanged
-(AES-256-GCM combined). The LAN QR flow and `POST /v1/auth/pairing-key`
-remain as the fallback / zero-trust option. New: two plaintext handshake
-frames (`pair_hello` / `pair_ack`) ahead of the encrypted phase, and an
-`identity_pubkey` field on destination registration. HKDF `info` carries a
-version string (`onesilo-pairing-v1`) and `pair_hello` a protocol version
-for future changes.
+Additive and non-breaking to the envelope wire format (AES-256-GCM combined).
+The LAN QR flow and `POST /v1/auth/pairing-key` remain as the LAN fallback.
+New: the `pair_hello`/`pair_ack`/`pair_confirm` handshake ahead of the
+encrypted phase, an `identity_pubkey` on destination registration, and a
+**downgrade-protected** version negotiated inside the transcript (so a
+tampered plaintext version field is detected by key-confirmation).
 
-## Open questions
+## Security & SOC 2 considerations
 
-- Assertion lifetime and whether to bind it to the specific WS connection
-  (e.g. include the app-chosen `nonce`) to prevent replay across connections.
-- Whether to also upgrade the LAN path to ECDH (dropping QR entirely) or
-  keep QR as the deliberate zero-trust bootstrap.
-- Key rotation: reissuing a node identity key (and the "safety number
-  changed" UX that follows) if `device_identity.key` is lost.
+An adversarial design review (2026-07) rewrote the protocol above. The
+must-fixes are folded in; this section records the rationale and maps
+controls to the SOC 2 Common Criteria. Findings are Fn.
+
+**Blocking crypto/protocol fixes (now in the design):**
+
+- **Key confirmation (F-1, CC6.1/CC7.2):** the `pair_confirm` MAC proves both
+  sides derived the same key *before* trusting the channel, so an active
+  substitution is detected and alarmed instead of surfacing as a generic
+  decryption error.
+- **Forward secrecy (F-2, CC6.1):** ephemeral-ephemeral DH mixed with the
+  static-static DH. Theft of a long-term identity key no longer decrypts
+  recorded sessions — essential given the node key is a file at rest (F-11).
+- **Connection-bound assertion (F-3, CC6.1):** node-provided nonce + both
+  nonces in the transcript + `exp ≤ 60s` + key-confirmation defeat replay and
+  reflection; a captured assertion can't complete without the live app key.
+- **No silent downgrade (F-4, CC6.1/CC6.6):** relayed connections require the
+  ECDH path; stripping `pair_hello` is refused and logged, not accepted on
+  the weaker `pairing.key`. Handshake frames are integrity-covered by the
+  transcript MAC.
+- **Transcript-bound KDF (F-5, CC6.1):** HKDF salt = hash of both identity +
+  ephemeral pubkeys, both nonces, and the assertion — so any substituted key
+  yields a different session key and fails confirmation.
+- **Node enforces `account_id` (F-8, CC6.1/CC6.3):** the node checks the
+  assertion's account against its *own* registered account — closing the
+  confused-deputy / cross-tenant hole (signature ≠ authorization).
+
+**Key management & operations (SOC 2):**
+
+- **Signing-key custody (F-9, CC6.1/CC6.6/CC7.1):** dedicated `ES256` key in
+  HSM/KMS, `kid`, rotation with overlap; node enforces an algorithm
+  allow-list (reject `alg:none`, RS/HS confusion) and fails closed on JWKS.
+- **Revocation & recovery (F-10, CC6.1/CC7.3/CC7.4):** device revocation
+  list + short assertions so revocation propagates within one `exp`;
+  "safety number changed" re-verification; identity keys are **never**
+  escrowed/backed up (escrow would break E2E).
+- **Node key at rest (F-11, CC6.1/CC6.7):** wrap `device_identity.key` with
+  `memory.key`/OS keystore; the node host is in-scope for endpoint controls.
+- **Audit logging (F-12, CC7.2/CC7.3):** structured events on server and
+  client — assertion issuance, pubkey registration/**change**, pair
+  success/failure, key-confirmation failure (candidate MITM), fallback used,
+  pin change — to the audit pipeline, with alerts on the anomalies.
+- **Access control & rate limits (F-13, CC6.1/CC6.3/CC6.6):** only a node may
+  set its own pubkey; scoped, rate-limited assertion issuance; pubkey change
+  gated + logged.
+- **Crypto-agility (F-14, CC8.1):** downgrade-protected version negotiation
+  and an algorithm deprecation path (room for X25519 / ML-KEM hybrid later).
+- **Data minimization (F-15, CC6.1/C1):** opaque, rotating `account_id` in the
+  assertion (no email/stable PII); assertions kept out of plaintext logs.
+- **Availability (F-16, A1/CC7.2):** verify the (cheap, cached-JWKS)
+  signature before the (expensive) ECDH; cap concurrent handshakes and
+  rate-limit per source; never fetch JWKS synchronously per connection.
+
+**Lower severity:** per-key AES-GCM message ceiling / rekey and keeping
+`sealWithNonce` test-only (F-6); bind `user_id` as GCM AAD if it ever gains
+meaning.
+
+**What the review affirmed:** the core E2E invariant (control plane never
+holds the symmetric key), per-connection keys, P-256-for-Secure-Enclave, and
+TOFU+SAS are the right foundations — the fixes above harden *how* they're
+composed.
+
+## Open decisions
+
+- **First-contact verification (product):** require the one-time SAS on first
+  relayed pairing (recommended), or accept TOFU-only for zero user steps —
+  see the Trust model note.
+- Whether to also upgrade the **LAN** path to the ECDH handshake (dropping QR
+  entirely) or keep QR as the deliberate zero-trust LAN bootstrap.
+- Node identity-key **rotation** UX and the re-pin ("safety number changed")
+  flow when `device_identity.key` is lost or wrapped-key recovery fails.
