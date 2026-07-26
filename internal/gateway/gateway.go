@@ -35,6 +35,11 @@ const RoutePrefix = "/v1/cloud"
 // probeTimeout bounds the control-plane reachability check in Healthy.
 const probeTimeout = 3 * time.Second
 
+// noCredentialsHint names every supported credential path, so a user who
+// chose OAuth during setup isn't steered toward an API key by mistake.
+const noCredentialsHint = "sign in with `silo-node setup`, set " +
+	controlplane.APIKeyEnvVar + ", or push a JWT"
+
 // Capability implements node.Capability for the control-plane relay.
 type Capability struct {
 	getCfg func() config.Config
@@ -45,7 +50,8 @@ type Capability struct {
 }
 
 // New builds the gateway capability. tokens is the same modal source the
-// registration manager uses (JWT pushed by the desktop app, or SILO_API_KEY).
+// registration manager uses: the setup sign-in's OAuth credential,
+// SILO_API_KEY, or a JWT pushed by the desktop app.
 func New(getCfg func() config.Config, tokens controlplane.TokenSource, logger *slog.Logger) *Capability {
 	return &Capability{getCfg: getCfg, tokens: tokens, logger: logger}
 }
@@ -79,7 +85,7 @@ func (c *Capability) Healthy(ctx context.Context) (bool, string) {
 		return false, "not started"
 	}
 	if _, err := c.tokens.Token(); err != nil {
-		return false, "no control-plane credentials (set " + controlplane.APIKeyEnvVar + " or push a JWT)"
+		return false, "no control-plane credentials (" + noCredentialsHint + ")"
 	}
 	target := c.getCfg().ControlPlane.URL
 	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
@@ -144,7 +150,7 @@ func (c *Capability) Handler(nodeKey func() string) http.Handler {
 		token, err := c.tokens.Token()
 		if err != nil {
 			writeError(w, http.StatusServiceUnavailable,
-				"no control-plane credentials (set "+controlplane.APIKeyEnvVar+" or push a JWT)")
+				"no control-plane credentials ("+noCredentialsHint+")")
 			return
 		}
 		base, err := url.Parse(strings.TrimRight(c.getCfg().ControlPlane.URL, "/"))
