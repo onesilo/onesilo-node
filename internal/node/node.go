@@ -290,13 +290,16 @@ func (n *Node) Reconcile(ctx context.Context) {
 		}
 	}
 
-	// Tunnels and destination registration are gateway-mode features: a
-	// local-mode node never talks to the control plane. (Validation already
-	// rejects local + tunnel configs; this guard covers live transitions.)
-	isGateway := cfg.Mode == config.ModeGateway
+	// Exposure — tunnel + destination registration — is orthogonal to the
+	// relay: a Local Node can be exposed so its local compute/memory is
+	// reachable from the owner's authenticated apps, and a Local Relay can
+	// stay LAN-only. An unexposed node never registers with the control
+	// plane. (This is the axis the setup wizard's "access from anywhere"
+	// question controls.)
+	exposed := cfg.Exposed()
 
-	// Quick tunnel: run only while a capability needs to be reachable.
-	wantQuick := isGateway && cfg.Tunnel.Mode == config.TunnelModeQuick && anyEnabled
+	// Quick tunnel: run only while exposed and a capability needs serving.
+	wantQuick := exposed && cfg.Tunnel.Mode == config.TunnelModeQuick && anyEnabled
 	n.tunnelMu.Lock()
 	running := n.tunnelMgr != nil
 	if wantQuick && !running {
@@ -317,9 +320,9 @@ func (n *Node) Reconcile(ctx context.Context) {
 	n.tunnelMu.Unlock()
 
 	// Registration desired state: quick-tunnel URL, external URL, or none.
-	// Local mode always clears it — no registration, no heartbeats.
+	// An unexposed node always clears it — no registration, no heartbeats.
 	switch {
-	case !isGateway:
+	case !exposed:
 		n.regMgr.SetTunnelURL("")
 	case cfg.Tunnel.Mode == config.TunnelModeQuick:
 		n.regMgr.SetTunnelURL(n.tunnelURL())
