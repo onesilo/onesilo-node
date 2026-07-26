@@ -17,15 +17,18 @@ import (
 
 	"github.com/onesilo/silo-node/internal/compute/ollama"
 	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/silo-node/internal/gateway"
 	"github.com/onesilo/silo-node/internal/tunnel"
 )
 
 // runSetup implements `silo-node setup`: an interactive wizard that takes a
 // standalone machine from nothing to a runnable node in one command. It
-// provisions the admin token, sets up local inference (finding or
-// downloading Ollama and pulling the default model), optionally enables
-// device memory and a Cloudflare quick tunnel (downloading cloudflared if
-// needed), and persists everything to the config file. Every step is
+// asks which mode the node runs in (local: private memory + LLM, no cloud;
+// gateway: control-plane relay), provisions the admin token, sets up local
+// inference (finding or downloading Ollama and pulling the default model),
+// optionally enables device memory, and — gateway mode only — a Cloudflare
+// quick tunnel (downloading cloudflared if needed) and control-plane
+// credentials. Everything persists to the config file. Every step is
 // idempotent, so re-running setup is always safe.
 func runSetup(args []string) int {
 	fs := flag.NewFlagSet("silo-node setup", flag.ExitOnError)
@@ -68,8 +71,21 @@ func runSetup(args []string) int {
 	p.printf("  data dir: %s\n", dataDir)
 	p.printf("  config:   %s\n\n", path)
 
-	// [1/4] Admin token — generated once, loaded automatically at start.
-	p.printf("[1/4] Admin API token\n")
+	// Node mode — everything else branches on this.
+	p.printf("Node mode\n")
+	p.printf("  local   — private: memory and LLM stay on this machine, never talks to the cloud\n")
+	p.printf("  gateway — relay to One Silo: cloud silos, connectors, and MCP, served locally\n")
+	isGateway := p.confirm("  Connect this node to the One Silo control plane (gateway mode)?",
+		cfg.Mode == config.ModeGateway)
+	if isGateway {
+		cfg.Mode = config.ModeGateway
+	} else {
+		cfg.Mode = config.ModeLocal
+		cfg.Tunnel.Mode = config.TunnelModeOff // a local node never talks to the control plane
+	}
+
+	// Admin token — generated once, loaded automatically at start.
+	p.printf("\nAdmin API token\n")
 	if _, created, err := ensureAdminToken(dataDir); err != nil {
 		fmt.Fprintln(os.Stderr, "silo-node setup: "+err.Error())
 		return 1
@@ -82,20 +98,25 @@ func runSetup(args []string) int {
 		p.printf("  note: SILO_NODE_ADMIN_TOKEN is set in this shell and takes precedence at runtime\n")
 	}
 
-	// [2/4] Compute — local LLM inference via Ollama.
-	p.printf("\n[2/4] Compute (local LLM inference via Ollama)\n")
-	if p.confirm("  Enable local LLM inference?", true) {
+	// Compute — local LLM inference via Ollama. The point of a local node;
+	// optional extra on a gateway.
+	p.printf("\nCompute (local LLM inference via Ollama)\n")
+	computeDefault := !isGateway || cfg.Capabilities.Compute
+	if p.confirm("  Enable local LLM inference?", computeDefault) {
 		if err := setupOllama(ctx, &cfg, dataDir, p); err != nil {
 			p.printf("  ! %s\n  ! compute left disabled — fix the above and re-run setup\n", err)
 			cfg.Capabilities.Compute = false
 		} else {
 			cfg.Capabilities.Compute = true
 		}
+	} else {
+		cfg.Capabilities.Compute = false
 	}
 
-	// [3/4] Memory — silos homed on this device.
-	p.printf("\n[3/4] Memory (silos stored on this device)\n")
-	if p.confirm("  Store silo memories on this device?", cfg.Capabilities.Memory) {
+	// Memory — silos homed on this device. Same split as compute.
+	p.printf("\nMemory (silos stored on this device)\n")
+	memoryDefault := !isGateway || cfg.Capabilities.Memory
+	if p.confirm("  Store silo memories on this device?", memoryDefault) {
 		cfg.Capabilities.Memory = true
 		if cfg.Capabilities.Compute {
 			embed := cfg.Memory.EmbedModel
@@ -112,21 +133,23 @@ func runSetup(args []string) int {
 		cfg.Capabilities.Memory = false
 	}
 
-	// [4/4] Tunnel — public reachability via a Cloudflare quick tunnel.
-	p.printf("\n[4/4] Public access (Cloudflare quick tunnel)\n")
-	wantTunnel := cfg.Tunnel.Mode == config.TunnelModeQuick
-	if p.confirm("  Expose this node publicly so Silo apps can reach it from anywhere?", wantTunnel) {
-		if err := setupTunnel(ctx, &cfg, dataDir, p); err != nil {
-			p.printf("  ! %s\n  ! tunnel left %q — the node still works locally\n", err, cfg.Tunnel.Mode)
+	// Gateway-only steps: tunnel and control-plane credentials.
+	if isGateway {
+		p.printf("\nPublic access (Cloudflare quick tunnel)\n")
+		wantTunnel := cfg.Tunnel.Mode == config.TunnelModeQuick
+		if p.confirm("  Expose this node publicly so Silo apps can reach it from anywhere?", wantTunnel) {
+			if err := setupTunnel(ctx, &cfg, dataDir, p); err != nil {
+				p.printf("  ! %s\n  ! tunnel left %q — the relay still works locally\n", err, cfg.Tunnel.Mode)
+			}
+		} else if cfg.Tunnel.Mode == config.TunnelModeQuick {
+			cfg.Tunnel.Mode = config.TunnelModeOff
 		}
-	}
 
-	// Control plane auth: standalone nodes use an sc_ API key (the desktop
-	// app pushes JWTs instead — but it never runs setup).
-	if (cfg.Capabilities.Compute || cfg.Capabilities.Memory) && cfg.ControlPlane.AuthMode == config.AuthModeJWT {
-		p.printf("\nControl plane\n")
-		if p.confirm("  Authenticate with a One Silo API key (sc_..., the standalone default)?", true) {
-			cfg.ControlPlane.AuthMode = config.AuthModeAPIKey
+		if cfg.ControlPlane.AuthMode == config.AuthModeJWT {
+			p.printf("\nControl plane\n")
+			if p.confirm("  Authenticate with a One Silo API key (sc_..., the standalone default)?", true) {
+				cfg.ControlPlane.AuthMode = config.AuthModeAPIKey
+			}
 		}
 	}
 
@@ -140,11 +163,16 @@ func runSetup(args []string) int {
 	}
 
 	p.printf("\nSetup complete — config written to %s.\n\n", path)
+	p.printf("  mode:    %s\n", cfg.Mode)
 	p.printf("  compute: %s\n", computeSummary(cfg))
 	p.printf("  memory:  %s\n", enabledWord(cfg.Capabilities.Memory))
-	p.printf("  tunnel:  %s\n", cfg.Tunnel.Mode)
+	if isGateway {
+		p.printf("  relay:   http://127.0.0.1:%d%s/... (X-Silo-Node-Key authenticated)\n",
+			cfg.LAN.Port, gateway.RoutePrefix)
+		p.printf("  tunnel:  %s\n", cfg.Tunnel.Mode)
+	}
 	p.printf("\nStart the node:\n\n")
-	if cfg.ControlPlane.AuthMode == config.AuthModeAPIKey {
+	if isGateway && cfg.ControlPlane.AuthMode == config.AuthModeAPIKey {
 		p.printf("  export SILO_API_KEY=\"sc_...\"   # from your One Silo account\n")
 	}
 	p.printf("  silo-node\n")

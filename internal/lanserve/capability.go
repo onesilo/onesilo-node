@@ -16,18 +16,19 @@ import (
 const bonjourRefreshInterval = 15 * time.Second
 
 // Capability runs the LAN server as a node capability. It is enabled when
-// LAN serving is on OR the memory capability is on: the memory HTTP API
-// rides the same server. Bonjour is only published while lan.enabled is
-// true (memory-only nodes don't advertise an LLM service).
+// LAN serving is on OR the memory capability is on OR the node is a
+// control-plane gateway: the memory HTTP API and the gateway relay ride
+// the same server. Bonjour is only published while lan.enabled is true
+// (memory-only and relay-only nodes don't advertise an LLM service).
 type Capability struct {
-	getCfg        func() config.Config
-	compute       ComputeBackend
-	memoryHandler http.Handler
-	currentModel  func() string
-	keySource     func() []byte
-	newAnnouncer  func() Announcer
-	onClients     func(int)
-	logger        *slog.Logger
+	getCfg       func() config.Config
+	compute      ComputeBackend
+	apiHandler   http.Handler
+	currentModel func() string
+	keySource    func() []byte
+	newAnnouncer func() Announcer
+	onClients    func(int)
+	logger       *slog.Logger
 
 	mu        sync.Mutex
 	server    *Server
@@ -39,14 +40,15 @@ type Capability struct {
 
 // NewCapability wires the LAN capability.
 //   - compute may be nil (memory-only node).
-//   - memoryHandler may be nil (memory disabled at build time of the node).
+//   - apiHandler serves the node HTTP APIs under /v1/ (memory, gateway
+//     relay) and may be nil.
 //   - currentModel feeds the Bonjour TXT record.
 //   - keySource resolves the pairing key per message (see FileKeySource).
 //   - newAnnouncer is a factory so tests can inject a fake.
 func NewCapability(
 	getCfg func() config.Config,
 	compute ComputeBackend,
-	memoryHandler http.Handler,
+	apiHandler http.Handler,
 	currentModel func() string,
 	keySource func() []byte,
 	newAnnouncer func() Announcer,
@@ -56,13 +58,13 @@ func NewCapability(
 		newAnnouncer = NewZeroconfAnnouncer
 	}
 	return &Capability{
-		getCfg:        getCfg,
-		compute:       compute,
-		memoryHandler: memoryHandler,
-		currentModel:  currentModel,
-		keySource:     keySource,
-		newAnnouncer:  newAnnouncer,
-		logger:        logger,
+		getCfg:       getCfg,
+		compute:      compute,
+		apiHandler:   apiHandler,
+		currentModel: currentModel,
+		keySource:    keySource,
+		newAnnouncer: newAnnouncer,
+		logger:       logger,
 	}
 }
 
@@ -70,10 +72,10 @@ func NewCapability(
 func (c *Capability) Name() string { return "lan" }
 
 // Enabled implements node.Capability: the LAN server must run for LAN
-// serving or for the memory API (same port).
+// serving, for the memory API, or for the gateway relay (same port).
 func (c *Capability) Enabled() bool {
 	cfg := c.getCfg()
-	return cfg.LAN.Enabled || cfg.Capabilities.Memory
+	return cfg.LAN.Enabled || cfg.Capabilities.Memory || cfg.Mode == config.ModeGateway
 }
 
 // Start implements node.Capability: bind the server, publish Bonjour when
@@ -86,7 +88,7 @@ func (c *Capability) Start(ctx context.Context) error {
 	}
 
 	router := NewRouter(c.keySource, c.compute, c.logger.With("component", "router"))
-	server := NewServer(c.getCfg().LAN.Port, router, c.memoryHandler, c.onClients, c.logger)
+	server := NewServer(c.getCfg().LAN.Port, router, c.apiHandler, c.onClients, c.logger)
 	if err := server.Start(ctx); err != nil {
 		return err
 	}

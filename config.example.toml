@@ -5,6 +5,18 @@
 # is: flags > SILO_NODE_* env > this file > built-in defaults.
 # Run `silo-node -h` for the full flag/env list.
 
+# What this node is:
+#   "local"   - self-contained: local memory and local LLM only. The node
+#               never talks to the One Silo control plane (tunnels are
+#               rejected by validation).
+#   "gateway" - control-plane relay: connects to One Silo with this node's
+#               credentials (see [control_plane]) and exposes the cloud
+#               surface — cloud silos, connectors, MCP — to local clients
+#               at /v1/cloud/* on lan.port (X-Silo-Node-Key authenticated).
+#               Tunnels and destination registration also require this mode.
+# env: SILO_NODE_MODE
+mode = "local"
+
 # Directory for node state: device_id, pairing.key, and the persisted config
 # when it is updated through the admin API. "~" is expanded.
 # env: SILO_NODE_DATA_DIR
@@ -72,7 +84,8 @@ default_model = "llama3.2:3b"
 binary_path = ""
 
 [tunnel]
-# How this node becomes reachable from outside the local network:
+# How this node becomes reachable from outside the local network.
+# Requires mode = "gateway" for anything but "off".
 #   "off"      - no public URL; the node never registers with the control plane.
 #   "quick"    - spawn an ephemeral Cloudflare quick tunnel (`cloudflared
 #                tunnel --url http://localhost:<lan.port>`). The URL changes

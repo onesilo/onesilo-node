@@ -10,6 +10,18 @@ import (
 	"strings"
 )
 
+// Node modes.
+const (
+	// ModeLocal is a self-contained node: local memory and local LLM only.
+	// The node never talks to the One Silo control plane.
+	ModeLocal = "local"
+	// ModeGateway is a control-plane relay: the node connects to One Silo
+	// with its own credentials and exposes the cloud surface (cloud silos,
+	// connectors, MCP) to local clients, alongside any local capabilities.
+	// Tunnels and destination registration are gateway-mode features.
+	ModeGateway = "gateway"
+)
+
 // Tunnel modes.
 const (
 	TunnelModeOff      = "off"
@@ -25,6 +37,11 @@ const (
 
 // Config is the full silo-node configuration.
 type Config struct {
+	// Mode selects what this node is: "local" (self-contained, never talks
+	// to the control plane) or "gateway" (control-plane relay). See the
+	// mode constants above.
+	Mode string `toml:"mode" json:"mode"`
+
 	// DataDir holds node state (device_id, pairing.key, persisted config).
 	// A leading "~" is expanded; use ResolvedDataDir for the absolute path.
 	DataDir string `toml:"data_dir" json:"data_dir"`
@@ -100,6 +117,7 @@ type Admin struct {
 // Default returns the built-in defaults.
 func Default() Config {
 	return Config{
+		Mode:    ModeLocal,
 		DataDir: "~/.silo-node",
 		Log: Log{
 			Format: "text",
@@ -134,8 +152,17 @@ func Default() Config {
 	}
 }
 
-// Validate checks enum fields and port ranges.
+// Validate checks enum fields, port ranges, and mode consistency.
 func (c *Config) Validate() error {
+	switch c.Mode {
+	case ModeLocal, ModeGateway:
+	default:
+		return fmt.Errorf("mode must be %q or %q, got %q", ModeLocal, ModeGateway, c.Mode)
+	}
+	if c.Mode == ModeLocal && c.Tunnel.Mode != TunnelModeOff {
+		return fmt.Errorf("tunnel.mode %q requires mode %q — a %q node never talks to the control plane",
+			c.Tunnel.Mode, ModeGateway, ModeLocal)
+	}
 	switch c.Log.Format {
 	case "text", "json":
 	default:
