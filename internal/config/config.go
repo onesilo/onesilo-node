@@ -28,7 +28,15 @@ const (
 // Tunnel modes. A non-"off" tunnel makes the node reachable from the
 // control plane (see Exposed) — available in either node mode.
 const (
-	TunnelModeOff      = "off"
+	TunnelModeOff = "off"
+	// TunnelModeManaged is the preferred remote-access mode: the control
+	// plane provisions a named Cloudflare tunnel with a stable hostname
+	// (<slug>.tunnel.onesilo.com) and the node runs cloudflared with a
+	// per-start token fetched from the control plane. Paid feature.
+	TunnelModeManaged = "managed"
+	// TunnelModeQuick mints an ephemeral *.trycloudflare.com quick tunnel.
+	// Kept for dev and as a fallback when managed provisioning is
+	// unavailable; the hostname changes on every cloudflared restart.
 	TunnelModeQuick    = "quick"
 	TunnelModeExternal = "external"
 )
@@ -169,9 +177,10 @@ func Default() Config {
 }
 
 // Exposed reports whether the node is reachable from the control plane —
-// i.e. a tunnel is configured (a managed quick tunnel or a bring-your-own
-// external URL). An exposed node registers itself as a destination so the
-// owner's authenticated apps can reach its local compute/memory from
+// i.e. a tunnel is configured (a managed named tunnel, a quick tunnel, or a
+// bring-your-own external URL). An exposed node registers itself as a
+// destination so the owner's authenticated apps can reach its local
+// compute/memory from
 // anywhere. Orthogonal to Mode: a Local Node can be exposed, and a Local
 // Relay can be kept LAN-only.
 func (c *Config) Exposed() bool {
@@ -205,9 +214,9 @@ func (c *Config) Validate() error {
 	// so an invalid tunnel.mode must surface as such rather than as a
 	// downstream control-plane URL error.
 	switch c.Tunnel.Mode {
-	case TunnelModeOff, TunnelModeQuick, TunnelModeExternal:
+	case TunnelModeOff, TunnelModeManaged, TunnelModeQuick, TunnelModeExternal:
 	default:
-		return fmt.Errorf("tunnel.mode must be one of off|quick|external, got %q", c.Tunnel.Mode)
+		return fmt.Errorf("tunnel.mode must be one of off|managed|quick|external, got %q", c.Tunnel.Mode)
 	}
 	if c.Tunnel.Mode == TunnelModeExternal {
 		if !strings.HasPrefix(c.Tunnel.ExternalURL, "https://") {
