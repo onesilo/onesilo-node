@@ -67,6 +67,10 @@ type RegisterRequest struct {
 	// CapabilitiesStatus is per-capability liveness ("live"|"dead"). Newer
 	// servers accept it; older ones may 422, handled by the caller.
 	CapabilitiesStatus map[string]string `json:"capabilities_status,omitempty"`
+	// IdentityPubKey is the node's long-term P-256 identity public key
+	// (base64 uncompressed point), published so the control plane can attest
+	// it in pairing assertions. Omitted when automated pairing is off.
+	IdentityPubKey string `json:"device_public_key,omitempty"`
 }
 
 // RegisterResponse is the subset of the registration echo we use.
@@ -74,6 +78,10 @@ type RegisterResponse struct {
 	DeviceID                 string `json:"device_id"`
 	HeartbeatIntervalSeconds int    `json:"heartbeat_interval_seconds"`
 	TTLSeconds               int    `json:"ttl_seconds"`
+	// AccountID is the owning account the control plane assigned this
+	// destination. The node pins it so a pairing assertion for a *different*
+	// account is rejected (cross-tenant confused-deputy defense).
+	AccountID string `json:"account_id"`
 }
 
 // Register registers (or re-registers) this node as a destination.

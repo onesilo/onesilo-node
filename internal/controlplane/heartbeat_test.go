@@ -27,6 +27,7 @@ func newProbeManager(probes ...CapabilityProbe) *Manager {
 		"",
 		func() string { return "test-device" },
 		func() string { return "" },
+		func() string { return "" },
 		func() []CapabilityProbe { return probes },
 		slog.Default(),
 	)
