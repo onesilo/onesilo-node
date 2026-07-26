@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/onesilo/silo-node/internal/adminapi"
@@ -20,9 +21,13 @@ import (
 )
 
 func main() {
-	// Subcommands (currently just `silo-node healthcheck`).
-	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		os.Exit(runHealthcheck(os.Args[2:]))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "healthcheck":
+			os.Exit(runHealthcheck(os.Args[2:]))
+		case "setup":
+			os.Exit(runSetup(os.Args[2:]))
+		}
 	}
 	os.Exit(run(os.Args[1:]))
 }
@@ -49,9 +54,18 @@ func run(args []string) int {
 
 	logger := logging.New(cfg.Log)
 
-	adminToken := os.Getenv(adminapi.AdminTokenEnvVar)
-	if adminToken == "" {
-		logger.Warn("SILO_NODE_ADMIN_TOKEN is not set; admin API refuses all authenticated requests (only /healthz is served)")
+	// Admin token: SILO_NODE_ADMIN_TOKEN wins; otherwise the token file
+	// written by `silo-node setup` is loaded.
+	dataDir, dirErr := cfg.ResolvedDataDir()
+	if dirErr != nil {
+		dataDir = ""
+	}
+	adminToken, tokenSource := resolveAdminToken(dataDir, os.LookupEnv)
+	switch tokenSource {
+	case "":
+		logger.Warn("no admin token (" + adminapi.AdminTokenEnvVar + " unset, no " + adminTokenFile + " in data dir); admin API refuses all authenticated requests — run `silo-node setup`")
+	case "file":
+		logger.Info("admin token loaded", "path", filepath.Join(dataDir, adminTokenFile))
 	}
 
 	n, err := node.New(cfg, path, adminToken, logger)

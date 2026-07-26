@@ -114,12 +114,13 @@ func (c *Capability) Handler(nodeKey func() string) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 	})
 
-	return requireNodeKey(nodeKey, mux)
+	return RequireNodeKey(nodeKey, mux)
 }
 
-// requireNodeKey rejects requests without the correct X-Silo-Node-Key.
-// Fails closed when no key is configured.
-func requireNodeKey(nodeKey func() string, next http.Handler) http.Handler {
+// RequireNodeKey rejects requests without the correct X-Silo-Node-Key.
+// Fails closed when no key is configured. Shared with every other
+// node-key-authenticated surface (e.g. the gateway relay).
+func RequireNodeKey(nodeKey func() string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		want := nodeKey()
 		got := r.Header.Get(NodeKeyHeader)

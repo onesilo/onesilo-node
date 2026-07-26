@@ -23,6 +23,8 @@ type Setting struct {
 // Settings returns the full override table.
 func Settings() []Setting {
 	return []Setting{
+		{"mode", "SILO_NODE_MODE", "node mode: local (self-contained) | gateway (control-plane relay)",
+			func(c *Config, v string) error { c.Mode = v; return nil }},
 		{"data-dir", "SILO_NODE_DATA_DIR", "directory for node state (device id, pairing key)",
 			func(c *Config, v string) error { c.DataDir = v; return nil }},
 		{"log-format", "SILO_NODE_LOG_FORMAT", "log output format: text|json",
@@ -35,7 +37,7 @@ func Settings() []Setting {
 			boolSetting(func(c *Config, v bool) { c.Capabilities.Compute = v })},
 		{"control-plane-url", "SILO_NODE_CONTROL_PLANE_URL", "base URL of the Silo control plane",
 			func(c *Config, v string) error { c.ControlPlane.URL = v; return nil }},
-		{"auth-mode", "SILO_NODE_AUTH_MODE", "control plane auth mode: jwt|api_key",
+		{"auth-mode", "SILO_NODE_AUTH_MODE", "control plane auth mode: jwt|api_key|oauth",
 			func(c *Config, v string) error { c.ControlPlane.AuthMode = v; return nil }},
 		{"device-name", "SILO_NODE_DEVICE_NAME", "device name reported to the control plane (default: hostname)",
 			func(c *Config, v string) error { c.ControlPlane.DeviceName = v; return nil }},
