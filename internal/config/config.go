@@ -113,6 +113,12 @@ type Tunnel struct {
 type LAN struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
 	Port    int  `toml:"port" json:"port"`
+	// RequirePairingVerification hard-gates automated pairing: a first-contact
+	// app identity key cannot run inference until its short authentication
+	// string (SAS) is confirmed in the admin UI. Default true (the safer
+	// posture — it catches an active control plane that substituted keys).
+	// Set false to trust-on-first-use without the manual SAS comparison.
+	RequirePairingVerification bool `toml:"require_pairing_verification" json:"require_pairing_verification"`
 }
 
 // Admin configures the localhost-only admin API.
@@ -149,8 +155,9 @@ func Default() Config {
 			Mode: TunnelModeOff,
 		},
 		LAN: LAN{
-			Enabled: false,
-			Port:    8765,
+			Enabled:                    false,
+			Port:                       8765,
+			RequirePairingVerification: true,
 		},
 		Admin: Admin{
 			Port: 8766,
