@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -101,6 +102,55 @@ func TestHTTPKeySourceFailsClosedWithNoCache(t *testing.T) {
 	ks := NewHTTPKeySource(func() string { return srv.URL })
 	if _, err := ks.Keys(context.Background()); err == nil {
 		t.Fatal("expected an error when the first fetch fails and there is no cache")
+	}
+}
+
+func TestHTTPKeySourceCoalescesConcurrentFetches(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	var hits atomic.Int32
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release // hold the leader's request open while waiters pile up
+		fmt.Fprint(w, jwksDoc(t, "silo-assert-1", &key.PublicKey))
+	}))
+	defer srv.Close()
+
+	ks := NewHTTPKeySource(func() string { return srv.URL })
+
+	// Leader goroutine enters the (blocked) handler.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { defer wg.Done(); ks.Keys(context.Background()) }()
+	<-entered // inflight is now set; the handler is parked on <-release
+
+	// A burst of waiters must share the in-flight fetch, not start their own.
+	const waiters = 16
+	var started atomic.Int32
+	for i := 0; i < waiters; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			started.Add(1)
+			if _, err := ks.Keys(context.Background()); err != nil {
+				t.Errorf("waiter got error: %v", err)
+			}
+		}()
+	}
+	for started.Load() < waiters {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond) // let waiters reach the inflight wait
+	close(release)
+	wg.Wait()
+
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("expected a single coalesced fetch, got %d", got)
 	}
 }
 
