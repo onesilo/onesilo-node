@@ -68,7 +68,7 @@ func (m *Manager) EnsureRunning(ctx context.Context) error {
 
 	m.mu.Lock()
 	if m.cmd == nil {
-		binary, err := findBinary(s.BinaryPath)
+		binary, err := FindBinary(s.BinaryPath)
 		if err != nil {
 			m.mu.Unlock()
 			return err
@@ -128,9 +128,9 @@ func (m *Manager) Stop() {
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 }
 
-// findBinary locates the ollama binary: explicit config path, then $PATH,
+// FindBinary locates the ollama binary: explicit config path, then $PATH,
 // then well-known Homebrew / local installs.
-func findBinary(configured string) (string, error) {
+func FindBinary(configured string) (string, error) {
 	if configured != "" {
 		if isExecutable(configured) {
 			return configured, nil

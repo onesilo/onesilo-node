@@ -22,11 +22,11 @@ const maxFrameBytes = 16 << 20
 //
 //	/            WebSocket upgrade (the iOS LLM protocol, root path)
 //	GET /healthz liveness probe
-//	/v1/memory/  memory capability API (when the handler is provided)
+//	/v1/         node HTTP APIs (memory, gateway relay) when provided
 type Server struct {
 	port          int
 	router        *Router
-	memoryHandler http.Handler
+	apiHandler    http.Handler
 	logger        *slog.Logger
 	onClientCount func(int)
 
@@ -39,13 +39,13 @@ type Server struct {
 	cancel context.CancelFunc
 }
 
-// NewServer builds the LAN server. memoryHandler may be nil (memory
-// disabled); onClientCount may be nil.
-func NewServer(port int, router *Router, memoryHandler http.Handler, onClientCount func(int), logger *slog.Logger) *Server {
+// NewServer builds the LAN server. apiHandler serves everything under /v1/
+// (memory API, gateway relay) and may be nil; onClientCount may be nil.
+func NewServer(port int, router *Router, apiHandler http.Handler, onClientCount func(int), logger *slog.Logger) *Server {
 	return &Server{
 		port:          port,
 		router:        router,
-		memoryHandler: memoryHandler,
+		apiHandler:    apiHandler,
 		logger:        logger,
 		onClientCount: onClientCount,
 	}
@@ -74,8 +74,8 @@ func (s *Server) Start(ctx context.Context) error {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
-	if s.memoryHandler != nil {
-		mux.Handle("/v1/memory/", s.memoryHandler)
+	if s.apiHandler != nil {
+		mux.Handle("/v1/", s.apiHandler)
 	}
 	mux.HandleFunc("/", s.handleWebSocket)
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,6 +19,7 @@ import (
 	"github.com/onesilo/silo-node/internal/compute"
 	"github.com/onesilo/silo-node/internal/config"
 	"github.com/onesilo/silo-node/internal/controlplane"
+	"github.com/onesilo/silo-node/internal/gateway"
 	"github.com/onesilo/silo-node/internal/lanserve"
 	"github.com/onesilo/silo-node/internal/memory"
 	"github.com/onesilo/silo-node/internal/tunnel"
@@ -44,6 +46,7 @@ type Node struct {
 
 	computeCap   *compute.Capability
 	memoryCap    *memory.Capability
+	gatewayCap   *gateway.Capability
 	lanCap       *lanserve.Capability
 	nodeKey      string
 	capabilities []Capability
@@ -100,13 +103,31 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 		return n.computeCap, cfg.Memory.EmbedModel, true
 	}, logger.With("capability", "memory"))
 
-	// The LAN server runs when lan.enabled OR memory is on: the memory API
-	// is mounted on the same port. Bonjour only advertises while
-	// lan.enabled (see internal/lanserve).
+	tokens := &controlplane.ModalTokenSource{
+		Mode:   func() string { return n.snapshot().ControlPlane.AuthMode },
+		JWT:    n.jwtStore,
+		APIKey: controlplane.NewAPIKeyStore(),
+		OAuth: controlplane.NewOAuthTokenSource(func() (string, error) {
+			cfg := n.snapshot()
+			return cfg.ResolvedDataDir()
+		}),
+	}
+
+	// Gateway relay: exposes the control plane's API/MCP surface to local
+	// clients (gateway mode only), authenticated by the node key.
+	n.gatewayCap = gateway.New(n.snapshot, tokens, logger.With("capability", "gateway"))
+
+	// The LAN server runs when lan.enabled, memory, or gateway mode is on:
+	// the node HTTP APIs are mounted on the same port. Bonjour only
+	// advertises while lan.enabled (see internal/lanserve).
+	nodeKeyFn := func() string { return n.nodeKey }
+	apiMux := http.NewServeMux()
+	apiMux.Handle("/v1/memory/", n.memoryCap.Handler(nodeKeyFn))
+	apiMux.Handle(gateway.RoutePrefix+"/", n.gatewayCap.Handler(nodeKeyFn))
 	n.lanCap = lanserve.NewCapability(
 		n.snapshot,
 		n.computeCap,
-		n.memoryCap.Handler(func() string { return n.nodeKey }),
+		apiMux,
 		func() string { return n.computeCap.CurrentModel() },
 		lanserve.FileKeySource(func() (string, error) {
 			cfg := n.snapshot()
@@ -117,15 +138,9 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	)
 
 	// The heartbeat maps compute -> llm_inference and memory ->
-	// silo_recall/silo_remember; "lan" has no control-plane identifier and
-	// is reported only through the admin API.
-	n.capabilities = []Capability{n.computeCap, n.memoryCap, n.lanCap}
-
-	tokens := &controlplane.ModalTokenSource{
-		Mode:   func() string { return n.snapshot().ControlPlane.AuthMode },
-		JWT:    n.jwtStore,
-		APIKey: controlplane.NewAPIKeyStore(),
-	}
+	// silo_recall/silo_remember; "lan" and "gateway" have no control-plane
+	// identifier and are reported only through the admin API.
+	n.capabilities = []Capability{n.computeCap, n.memoryCap, n.gatewayCap, n.lanCap}
 	client := controlplane.NewClient(func() string { return n.snapshot().ControlPlane.URL }, tokens)
 	n.regMgr = controlplane.NewManager(
 		client,
@@ -265,8 +280,13 @@ func (n *Node) Reconcile(ctx context.Context) {
 		}
 	}
 
+	// Tunnels and destination registration are gateway-mode features: a
+	// local-mode node never talks to the control plane. (Validation already
+	// rejects local + tunnel configs; this guard covers live transitions.)
+	isGateway := cfg.Mode == config.ModeGateway
+
 	// Quick tunnel: run only while a capability needs to be reachable.
-	wantQuick := cfg.Tunnel.Mode == config.TunnelModeQuick && anyEnabled
+	wantQuick := isGateway && cfg.Tunnel.Mode == config.TunnelModeQuick && anyEnabled
 	n.tunnelMu.Lock()
 	running := n.tunnelMgr != nil
 	if wantQuick && !running {
@@ -287,10 +307,13 @@ func (n *Node) Reconcile(ctx context.Context) {
 	n.tunnelMu.Unlock()
 
 	// Registration desired state: quick-tunnel URL, external URL, or none.
-	switch cfg.Tunnel.Mode {
-	case config.TunnelModeQuick:
+	// Local mode always clears it — no registration, no heartbeats.
+	switch {
+	case !isGateway:
+		n.regMgr.SetTunnelURL("")
+	case cfg.Tunnel.Mode == config.TunnelModeQuick:
 		n.regMgr.SetTunnelURL(n.tunnelURL())
-	case config.TunnelModeExternal:
+	case cfg.Tunnel.Mode == config.TunnelModeExternal:
 		n.regMgr.SetTunnelURL(cfg.Tunnel.ExternalURL)
 	default:
 		n.regMgr.SetTunnelURL("")
@@ -366,6 +389,7 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 	return adminapi.Status{
 		Version:       version.Version,
 		Commit:        version.Commit,
+		Mode:          cfg.Mode,
 		UptimeSeconds: int64(time.Since(n.started).Seconds()),
 		Capabilities:  caps,
 		Tunnel:        adminapi.TunnelStatus{Mode: cfg.Tunnel.Mode, URL: tunnelURL},

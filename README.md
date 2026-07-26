@@ -2,9 +2,26 @@
 
 An open-source node for the [One Silo](https://onesilo.com) network. A node is a
 machine you own — a Mac in your office, a home server, a container on your
-NAS — that contributes capabilities to your Silo account and stays reachable
-through a Cloudflare tunnel, so your Silo apps can use *your* hardware from
-anywhere.
+NAS — that serves memory and LLM traffic from your own hardware.
+
+## Modes
+
+A node runs in one of two modes (`mode` in the config, chosen by the setup
+wizard):
+
+- **`local`** *(default)* — self-contained and private. Memory and LLM
+  inference are served entirely from this machine; the node **never talks
+  to the One Silo control plane**. Tunnels are rejected by config
+  validation in this mode — there is nothing to phone home to.
+- **`gateway`** — a relay to the One Silo control plane. The node connects
+  with its own credentials (an OAuth sign-in from `silo-node setup`, an
+  `sc_` API key, or a desktop-pushed JWT) and
+  exposes the cloud surface — **cloud silos, connectors, and the MCP
+  gateway** — to local clients at `/v1/cloud/*` on `lan.port`,
+  authenticated by the node key. Local clients get the full One Silo
+  platform without ever holding cloud credentials themselves. Gateway mode
+  can *also* run the local capabilities, and it is the mode where tunnels
+  and destination registration (cloud → node traffic) live.
 
 ## Capabilities
 
@@ -14,7 +31,8 @@ A node contributes independently enable-able capabilities:
 |------------|--------|------------------|
 | **compute** | available | Local LLM inference backed by [Ollama](https://ollama.com) (`llm_inference`) |
 | **memory** | available | Silos homed on your device (`silo_recall`, `silo_remember`) |
-| **lan** | available | LAN serving: the Silo iOS app chats with this node directly over the local network (Bonjour discovery + E2E-encrypted WebSocket, see [docs/protocol.md](docs/protocol.md)); also hosts the memory API |
+| **lan** | available | LAN serving: the Silo iOS app chats with this node directly over the local network (Bonjour discovery + E2E-encrypted WebSocket, see [docs/protocol.md](docs/protocol.md)); also hosts the memory API and the gateway relay |
+| **gateway** | available | Control-plane relay (`mode = "gateway"`): cloud silos, connectors, and MCP served to local clients at `/v1/cloud/*` |
 
 Enable any subset. While at least one capability is enabled and the node has
 a public URL (see tunnels below), it registers itself with the Silo control
@@ -34,29 +52,47 @@ silo-node ships two ways:
 ## Quickstart
 
 ```bash
-# Build (Go 1.24+)
-make build
+make build              # Go 1.24+
+./bin/silo-node setup   # interactive wizard (or `setup -yes` for defaults)
 
-# First run: enable compute against a local Ollama install
-export SILO_NODE_ADMIN_TOKEN="$(openssl rand -hex 32)"   # guards the admin API
-export SILO_API_KEY="sc_..."                             # from your Silo account
-./bin/silo-node \
-  -compute=true \
-  -auth-mode=api_key \
-  -tunnel-mode=quick        # requires cloudflared installed
+export SILO_API_KEY="sc_..."   # gateway mode only — from your Silo account
+./bin/silo-node
 ```
 
-The node connects to (or, with `-ollama-manage=true`, spawns) Ollama, opens
-an ephemeral Cloudflare quick tunnel, and registers with the control plane.
-Check it:
+`setup` asks for what it needs and provisions the rest:
+
+- asks which **mode** the node runs in — `local` (private, the default) or
+  `gateway` (One Silo relay) — and branches the remaining steps on it;
+- generates the admin API token at `~/.silo-node/admin.token` (0600) —
+  loaded automatically at start, no env var needed
+  (`SILO_NODE_ADMIN_TOKEN` still wins when set);
+- finds a running Ollama server or an existing install; when there is
+  neither, it downloads the official Ollama release into the data dir and
+  pulls the default model, so compute works with nothing pre-installed;
+- optionally enables device memory (pulling the embedding model for hybrid
+  recall);
+- gateway mode only: optionally turns on the Cloudflare quick tunnel
+  (downloading cloudflared the same way), then **signs you in to One
+  Silo** — a browser OAuth flow, after which the node holds its own
+  refreshable credential (`~/.silo-node/oauth.json`, 0600) and appears in
+  your [dashboard connections](https://dashboard.onesilo.com/connections),
+  just like the Silo iOS app. No account yet? The wizard points you to
+  [onesilo.com](https://onesilo.com) to create one. An `sc_` API key
+  remains the headless fallback;
+- writes it all to `~/.silo-node/config.toml`.
+
+Re-running `setup` is safe — it keeps previous choices as defaults. Check
+the running node:
 
 ```bash
-curl -s -H "Authorization: Bearer $SILO_NODE_ADMIN_TOKEN" \
+curl -s -H "Authorization: Bearer $(cat ~/.silo-node/admin.token)" \
   http://127.0.0.1:8766/v1/status | jq
 ```
 
-For persistent setups, copy [`config.example.toml`](config.example.toml) to
-`~/.silo-node/config.toml` — it documents every option.
+Prefer hand-written config? Copy
+[`config.example.toml`](config.example.toml) to `~/.silo-node/config.toml`
+— it documents every option — and every knob is also a CLI flag / env var
+(`silo-node -h`).
 
 ## Configuration
 
@@ -65,11 +101,12 @@ Precedence: **CLI flags > `SILO_NODE_*` env vars > TOML file > defaults**.
 
 | Section | Key | Default | Notes |
 |---------|-----|---------|-------|
+| — | `mode` | `local` | `local` (self-contained, no cloud) or `gateway` (control-plane relay) |
 | — | `data_dir` | `~/.silo-node` | device id, pairing key, persisted config |
 | `log` | `format` / `level` | `text` / `info` | `json` for shippers |
 | `capabilities` | `memory`, `compute` | `false` | independently toggled |
 | `control_plane` | `url` | `https://api.onesilo.com` | |
-| | `auth_mode` | `jwt` | `jwt` (desktop-pushed) or `api_key` (`SILO_API_KEY`) |
+| | `auth_mode` | `jwt` | `jwt` (desktop-pushed), `api_key` (`SILO_API_KEY`), or `oauth` (setup sign-in) |
 | | `device_name` | hostname | shown in Silo apps |
 | `memory` | `embed_model` | `nomic-embed-text` | Ollama embedding model for hybrid recall |
 | `ollama` | `host` | `http://127.0.0.1:11434` | |
@@ -87,8 +124,9 @@ live by the reconciler and persisted back to the config file. (A changed
 ## Admin API
 
 Bound to `127.0.0.1:<admin.port>` only. Every route except `GET /healthz`
-requires `Authorization: Bearer $SILO_NODE_ADMIN_TOKEN`; if that variable is
-unset the API fails closed.
+requires `Authorization: Bearer <admin token>`. The token comes from
+`SILO_NODE_ADMIN_TOKEN` when set, else from `<data_dir>/admin.token`
+(written by `silo-node setup`); with neither present the API fails closed.
 
 | Route | Purpose |
 |-------|---------|
@@ -124,7 +162,7 @@ over Ollama embeddings whenever the compute capability is also enabled
 | `DELETE /v1/memory/{silo_id}/{memory_id}` | → `{"deleted": true}` |
 
 ```bash
-NODE_KEY=$(curl -s -H "Authorization: Bearer $SILO_NODE_ADMIN_TOKEN" \
+NODE_KEY=$(curl -s -H "Authorization: Bearer $(cat ~/.silo-node/admin.token)" \
   http://127.0.0.1:8766/v1/status | jq -r .node_key)
 curl -s -X POST -H "X-Silo-Node-Key: $NODE_KEY" \
   -d '{"content": "the deploy runs at 9am"}' \
@@ -134,13 +172,40 @@ curl -s -X POST -H "X-Silo-Node-Key: $NODE_KEY" \
 Remember writes embeddings best-effort: if compute is off (or the embed
 model isn't pulled), the memory is still stored and findable by keyword.
 
+## Gateway relay API
+
+With `mode = "gateway"`, the node relays the One Silo cloud surface on
+**`lan.port`** under `/v1/cloud/`, attaching its own control-plane
+credentials to every forwarded request. Local clients authenticate with the
+same `X-Silo-Node-Key` header as the memory API and never see a cloud
+token.
+
+| Local route | Forwards to |
+|-------------|-------------|
+| `/v1/cloud/api/...` | `<control_plane.url>/api/...` (REST: cloud silos, connectors, ingestion) |
+| `/v1/cloud/mcp` | `<control_plane.url>/mcp` (the MCP gateway, SSE streaming included) |
+
+Only those two surfaces are relayed; every other path is refused. Example —
+recall from a cloud silo through the node:
+
+```bash
+curl -s -X POST -H "X-Silo-Node-Key: $NODE_KEY" \
+  -d '{"query": "payments migration"}' \
+  http://127.0.0.1:8765/v1/cloud/api/v1/silos/default/recall
+```
+
+A local-mode node serves none of this: the `/v1/cloud/*` routes answer 503
+and the node never opens a connection to the control plane.
+
 ## Security posture
 
 Three distinct mechanisms, three distinct jobs:
 
-- **Connection auth (JWT / API key)** — authenticates this node *to the
-  control plane*. Either a short-lived Clerk JWT pushed by the desktop app,
-  or an `sc_` API key. This is identity, nothing more.
+- **Connection auth (OAuth / JWT / API key)** — authenticates this node
+  *to the control plane*. Either the node's own OAuth grant from the setup
+  sign-in (refresh token at `data_dir/oauth.json`, 0600, revocable from
+  the dashboard), a short-lived Clerk JWT pushed by the desktop app, or an
+  `sc_` API key. This is identity, nothing more.
 - **Device pairing key** — confidentiality layer for direct LAN
   connections between your own devices (AES-256-GCM on every WebSocket
   payload). It never leaves your machines and is not an authorization

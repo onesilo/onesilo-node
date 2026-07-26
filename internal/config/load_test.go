@@ -173,7 +173,7 @@ func TestLoadRejectsBadBool(t *testing.T) {
 
 func TestExternalModeRequiresHTTPSURL(t *testing.T) {
 	_, err := Load(LoadOptions{
-		FlagValues: map[string]string{"tunnel-mode": "external"},
+		FlagValues: map[string]string{"mode": "gateway", "tunnel-mode": "external"},
 		LookupEnv:  noEnv,
 	})
 	if err == nil || !strings.Contains(err.Error(), "external_url") {
@@ -181,6 +181,7 @@ func TestExternalModeRequiresHTTPSURL(t *testing.T) {
 	}
 	_, err = Load(LoadOptions{
 		FlagValues: map[string]string{
+			"mode":                "gateway",
 			"tunnel-mode":         "external",
 			"tunnel-external-url": "https://node.example.com",
 		},
@@ -230,5 +231,31 @@ func TestSaveRoundTrip(t *testing.T) {
 	}
 	if loaded != cfg {
 		t.Errorf("round trip mismatch:\n got  %+v\n want %+v", loaded, cfg)
+	}
+}
+
+func TestModeValidation(t *testing.T) {
+	if _, err := Load(LoadOptions{
+		FlagValues: map[string]string{"mode": "hybrid"},
+		LookupEnv:  noEnv,
+	}); err == nil || !strings.Contains(err.Error(), "mode must be") {
+		t.Fatalf("expected mode enum error, got %v", err)
+	}
+	// A local node never talks to the control plane: tunnels are rejected.
+	if _, err := Load(LoadOptions{
+		FlagValues: map[string]string{"mode": "local", "tunnel-mode": "quick"},
+		LookupEnv:  noEnv,
+	}); err == nil || !strings.Contains(err.Error(), "gateway") {
+		t.Fatalf("expected local+tunnel rejection, got %v", err)
+	}
+	cfg, err := Load(LoadOptions{
+		FlagValues: map[string]string{"mode": "gateway", "tunnel-mode": "quick"},
+		LookupEnv:  noEnv,
+	})
+	if err != nil || cfg.Mode != ModeGateway {
+		t.Fatalf("gateway+quick should load, got mode %q, %v", cfg.Mode, err)
+	}
+	if cfg := Default(); cfg.Mode != ModeLocal {
+		t.Fatalf("default mode must be local, got %q", cfg.Mode)
 	}
 }

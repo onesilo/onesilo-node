@@ -41,8 +41,10 @@ type Controller interface {
 
 // Status is the GET /v1/status response.
 type Status struct {
-	Version       string             `json:"version"`
-	Commit        string             `json:"commit"`
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	// Mode is the node mode: "local" or "gateway".
+	Mode          string             `json:"mode"`
 	UptimeSeconds int64              `json:"uptime_seconds"`
 	Capabilities  []CapabilityStatus `json:"capabilities"`
 	Tunnel        TunnelStatus       `json:"tunnel"`
