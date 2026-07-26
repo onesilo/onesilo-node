@@ -201,7 +201,7 @@ func setupSignIn(ctx context.Context, cfg *config.Config, dataDir string, p *pro
 		return
 	}
 
-	if p.confirm("  Sign in to One Silo now (opens your browser)?", true) {
+	if p.confirm("  Sign in to One Silo now (opens your browser; new users can create an account there)?", true) {
 		err := signIn(ctx, cfg.ControlPlane.URL, dataDir, deviceNameFor(cfg), p.out)
 		if err == nil {
 			cfg.ControlPlane.AuthMode = config.AuthModeOAuth
