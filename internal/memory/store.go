@@ -148,6 +148,26 @@ func (s *Store) GetMany(ctx context.Context, siloID string, ids []string) (map[s
 	return out, nil
 }
 
+// List returns every memory in a silo, oldest first.
+func (s *Store) List(ctx context.Context, siloID string) ([]Record, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, silo_id, content, metadata_json, created_at, updated_at
+		 FROM memories WHERE silo_id = ? ORDER BY created_at ASC, id ASC`, siloID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Record
+	for rows.Next() {
+		var r Record
+		if err := rows.Scan(&r.ID, &r.SiloID, &r.Content, &r.MetadataJSON, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // Delete removes a memory, its FTS entry, and its embeddings. Returns
 // false when the memory does not exist in that silo.
 func (s *Store) Delete(ctx context.Context, siloID, id string) (bool, error) {

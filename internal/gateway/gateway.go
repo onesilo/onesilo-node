@@ -122,6 +122,13 @@ func (c *Capability) Handler(nodeKey func() string) http.Handler {
 			pr.Out.URL = st.target
 			pr.Out.Host = st.target.Host
 			pr.Out.Header.Del(memory.NodeKeyHeader)
+			// Drop client-supplied headers that would otherwise ride upstream
+			// under the node's cloud identity: spoofable trust/forwarding
+			// headers and any ambient cookies. The relay lends only the
+			// node's bearer token, nothing the LAN caller injects.
+			for _, h := range strippedRelayHeaders {
+				pr.Out.Header.Del(h)
+			}
 			pr.Out.Header.Set("Authorization", "Bearer "+st.token)
 			pr.Out.Header.Set("User-Agent", version.UserAgent())
 		},
@@ -136,6 +143,10 @@ func (c *Capability) Handler(nodeKey func() string) http.Handler {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !c.running.Load() {
 			writeError(w, http.StatusServiceUnavailable, "gateway capability is not running (node mode is not \"gateway\")")
+			return
+		}
+		if !allowedMethod(r.Method) {
+			writeError(w, http.StatusMethodNotAllowed, "method not relayed")
 			return
 		}
 		rest, ok := strings.CutPrefix(r.URL.Path, RoutePrefix)
@@ -174,6 +185,30 @@ func (c *Capability) Handler(nodeKey func() string) http.Handler {
 // deliberately not relayed.
 func allowedPath(p string) bool {
 	return strings.HasPrefix(p, "/api/") || p == "/mcp" || strings.HasPrefix(p, "/mcp/")
+}
+
+// allowedMethod restricts relayed methods to those the REST API and MCP
+// (POST + SSE GET) surfaces actually use — no CONNECT/TRACE or other
+// unexpected verbs riding the node's cloud credentials.
+func allowedMethod(m string) bool {
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodPost,
+		http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions:
+		return true
+	default:
+		return false
+	}
+}
+
+// strippedRelayHeaders are client-supplied headers the relay never forwards
+// upstream: spoofable forwarding/trust headers and ambient cookies.
+var strippedRelayHeaders = []string{
+	"Cookie",
+	"X-Forwarded-For",
+	"X-Forwarded-Host",
+	"X-Forwarded-Proto",
+	"X-Real-Ip",
+	"Forwarded",
 }
 
 // writeError mirrors the memory API's error shape.

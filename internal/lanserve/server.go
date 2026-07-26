@@ -18,6 +18,17 @@ import (
 // with long histories/attachments can be large.
 const maxFrameBytes = 16 << 20
 
+// maxClients caps concurrent WebSocket connections. The port is on 0.0.0.0,
+// so without a cap any LAN host could open connections until the node runs
+// out of fds/goroutines. Legitimate use is a handful of local clients.
+const maxClients = 64
+
+// idleReadTimeout closes a WebSocket that sends nothing for this long,
+// reclaiming connections held open by idle or slow-loris clients. It is a
+// per-read deadline, refreshed on every frame, so an active session with
+// long think-time between messages stays connected.
+const idleReadTimeout = 5 * time.Minute
+
 // Server is the single LAN-facing HTTP server on lan.port:
 //
 //	/            WebSocket upgrade (the iOS LLM protocol, root path)
@@ -79,7 +90,15 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	mux.HandleFunc("/", s.handleWebSocket)
 
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	// ReadHeaderTimeout stops slow-loris header trickling; IdleTimeout
+	// reaps idle keep-alive connections on the HTTP (non-WebSocket) side.
+	// No overall ReadTimeout/WriteTimeout: the WebSocket upgrade hijacks the
+	// conn and manages its own deadlines (see handleWebSocket).
+	srv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	s.srv = srv
 	s.ln = ln
 	s.logger.Info("LAN server listening", "addr", ln.Addr().String())
@@ -146,6 +165,23 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reject over the cap before upgrading, so a flood can't exhaust fds and
+	// goroutines. Reserve the slot atomically and release it on return.
+	if n := s.clients.Add(1); n > maxClients {
+		s.clients.Add(-1)
+		http.Error(w, "too many connections", http.StatusServiceUnavailable)
+		return
+	}
+	slotReleased := false
+	releaseSlot := func() {
+		if !slotReleased {
+			slotReleased = true
+			n := s.clients.Add(-1)
+			s.notifyClients(int(n))
+			s.logger.Info("LAN client disconnected", "remote", r.RemoteAddr, "clients", n)
+		}
+	}
+
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		// LAN clients (URLSessionWebSocketTask) send no browser Origin;
 		// origin checking is meaningless here — the payload is E2E encrypted.
@@ -153,6 +189,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		s.logger.Debug("websocket accept failed", "error", err)
+		s.clients.Add(-1) // never counted as connected; release quietly
 		return
 	}
 	conn.SetReadLimit(maxFrameBytes)
@@ -161,6 +198,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	serveCtx := s.ctx
 	s.mu.Unlock()
 	if serveCtx == nil { // stopped between accept and here
+		s.clients.Add(-1) // release the reserved slot (never went "connected")
 		conn.Close(websocket.StatusGoingAway, "server stopping")
 		return
 	}
@@ -170,14 +208,11 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	stop := context.AfterFunc(r.Context(), cancel)
 	defer stop()
 
-	n := s.clients.Add(1)
-	s.notifyClients(int(n))
-	s.logger.Info("LAN client connected", "remote", r.RemoteAddr, "clients", n)
-	defer func() {
-		n := s.clients.Add(-1)
-		s.notifyClients(int(n))
-		s.logger.Info("LAN client disconnected", "remote", r.RemoteAddr, "clients", n)
-	}()
+	// The slot was reserved before Accept; publish the current count now.
+	connected := int(s.clients.Load())
+	s.notifyClients(connected)
+	s.logger.Info("LAN client connected", "remote", r.RemoteAddr, "clients", connected)
+	defer releaseSlot()
 
 	sess := NewSession(func(ctx context.Context, data []byte) error {
 		return conn.Write(ctx, websocket.MessageText, data)
@@ -192,7 +227,11 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for {
-		_, frame, err := conn.Read(ctx)
+		// Per-read idle deadline: an active client refreshes it every frame;
+		// a silent/slow-loris client is dropped after idleReadTimeout.
+		readCtx, cancelRead := context.WithTimeout(ctx, idleReadTimeout)
+		_, frame, err := conn.Read(readCtx)
+		cancelRead()
 		if err != nil {
 			return
 		}

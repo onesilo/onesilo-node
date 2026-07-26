@@ -25,7 +25,11 @@ func ensureAdminToken(dataDir string) (token string, created bool, err error) {
 			return t, false, nil
 		}
 	}
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+	// 0700: this directory holds admin.token, node.key, memory.key,
+	// oauth.json, pairing.key — every node secret. setup runs this before
+	// the node's own 0700 MkdirAll, and MkdirAll won't tighten an existing
+	// dir, so it must be created restrictively here.
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return "", false, fmt.Errorf("creating data dir: %w", err)
 	}
 	buf := make([]byte, 32)

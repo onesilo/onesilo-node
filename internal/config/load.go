@@ -157,7 +157,8 @@ func Load(opts LoadOptions) (Config, error) {
 // Save writes cfg as TOML to path (0600), creating parent directories.
 // Used by the admin API's PUT /v1/config to persist live changes.
 func Save(cfg Config, path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// 0700: config lives in data_dir alongside the node's secret files.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 	tmp := path + ".tmp"
