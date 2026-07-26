@@ -444,13 +444,15 @@ func setupTunnel(ctx context.Context, cfg *config.Config, dataDir string, p *pro
 	// Prefer the managed named tunnel: One Silo provisions a stable
 	// hostname for this node (paid feature; the node explains the upgrade
 	// path at runtime if the account is free). Keep an explicit
-	// quick/external choice a user has made in the config.
-	if cfg.Tunnel.Mode == config.TunnelModeOff || cfg.Tunnel.Mode == "" ||
-		cfg.Tunnel.Mode == config.TunnelModeManaged {
+	// quick/external choice a user has made in the config; anything else —
+	// off, empty, or an invalid value — becomes managed so the wizard never
+	// leaves remote access enabled with a mode that fails validation.
+	switch cfg.Tunnel.Mode {
+	case config.TunnelModeQuick, config.TunnelModeExternal:
+		p.printf("  keeping existing tunnel mode %q from config\n", cfg.Tunnel.Mode)
+	default:
 		cfg.Tunnel.Mode = config.TunnelModeManaged
 		p.printf("  remote access will use a stable One Silo hostname for this node\n")
-	} else {
-		p.printf("  keeping existing tunnel mode %q from config\n", cfg.Tunnel.Mode)
 	}
 	return nil
 }

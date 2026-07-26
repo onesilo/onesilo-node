@@ -32,6 +32,10 @@ var ErrSubscriptionRequired = errors.New("remote access requires a paid One Silo
 // tunnels (404 on an old deploy, 503 when Cloudflare isn't configured).
 var ErrManagedUnavailable = errors.New("control plane cannot provision managed tunnels")
 
+// ErrReadyTimeout means cloudflared started but never logged the tunnel
+// connection registration (the managed-mode readiness marker).
+var ErrReadyTimeout = errors.New("timed out waiting for cloudflared to register the tunnel connection")
+
 // readyPattern matches cloudflared's named-tunnel readiness log line.
 var readyPattern = regexp.MustCompile(`Registered tunnel connection`)
 
@@ -258,7 +262,7 @@ func (m *ManagedManager) spawn(ctx context.Context, token string) (*exec.Cmd, er
 		return cmd, nil
 	case <-time.After(readyTimeout):
 		m.reapCmd(cmd)
-		return nil, ErrURLTimeout
+		return nil, ErrReadyTimeout
 	case <-ctx.Done():
 		m.reapCmd(cmd)
 		return nil, ctx.Err()
