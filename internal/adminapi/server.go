@@ -110,6 +110,10 @@ type RegistrationStatus struct {
 	// OAuthSignedIn reports whether a usable OAuth credential is stored
 	// (written by `silo-node setup` sign-in). Meaningful in gateway mode.
 	OAuthSignedIn bool `json:"oauth_signed_in"`
+	// SubscriptionRequired is true when the control plane refused remote
+	// registration because the owner's plan doesn't include remote access
+	// (a 402). The node still serves locally; upgrading unblocks it.
+	SubscriptionRequired bool `json:"subscription_required"`
 }
 
 // Server is the localhost admin HTTP server.

@@ -427,6 +427,14 @@ async function renderSettings() {
           ? status.tunnel.url
           : (status.tunnel ? status.tunnel.mode : "off")),
       ] : []),
+      ...((reg.subscription_required && status.tunnel && status.tunnel.mode !== "off") ? [
+        el("dt", null, "Remote access"),
+        el("dd", null,
+          el("span", { class: "badge badge-orange" }, "subscription required"),
+          " — this node is set to be reachable from anywhere, but that needs a ",
+          el("a", { href: "https://onesilo.com/pricing", target: "_blank", rel: "noopener" }, "One Silo subscription"),
+          ". It still works on your local network."),
+      ] : []),
       el("dt", null, "Capabilities"),
       el("dd", null, ...(status.capabilities || []).map((c) =>
         el("span", {
