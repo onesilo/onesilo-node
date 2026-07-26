@@ -30,6 +30,11 @@ type Controller interface {
 	SetJWT(token string)
 	// SetPairingKey persists the LAN pairing key (64 hex chars).
 	SetPairingKey(hexKey string) error
+	// Generate runs a one-shot completion on the node's local model and
+	// returns the full text plus the model tag used (POST
+	// /v1/compute/generate). Errors when the compute capability is not
+	// running or the Ollama call fails.
+	Generate(ctx context.Context, prompt string, temperature float64) (text string, model string, err error)
 	// Shutdown begins graceful node shutdown.
 	Shutdown()
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -437,6 +438,27 @@ func (n *Node) SetPairingKey(hexKey string) error {
 		return fmt.Errorf("writing pairing key: %w", err)
 	}
 	return nil
+}
+
+// Generate implements adminapi.Controller: collect a one-shot completion
+// from the compute capability (POST /v1/compute/generate). This is how
+// local clients — e.g. a Buzz agent distilling conversation privately
+// before anything reaches the control plane — borrow the node's model.
+func (n *Node) Generate(ctx context.Context, prompt string, temperature float64) (string, string, error) {
+	// The model is reported by the stream call itself: CurrentModel() can be
+	// refreshed concurrently and might name a model this completion never ran on.
+	stream, model, err := n.computeCap.StreamGenerateModel(ctx, prompt, temperature)
+	if err != nil {
+		return "", "", err
+	}
+	var b strings.Builder
+	for res := range stream {
+		if res.Err != nil {
+			return "", "", res.Err
+		}
+		b.WriteString(res.Delta.Response)
+	}
+	return b.String(), model, nil
 }
 
 // Shutdown implements adminapi.Controller.

@@ -20,6 +20,10 @@ type fakeController struct {
 	pairingKey string
 	shutdowns  atomic.Int32
 	patchErr   error
+
+	generateErr     error
+	lastPrompt      string
+	lastTemperature float64
 }
 
 func (f *fakeController) Status(context.Context) Status {
@@ -33,7 +37,14 @@ func (f *fakeController) ApplyConfigPatch(_ context.Context, p ConfigPatch) (con
 	p.ApplyTo(&f.cfg)
 	return f.cfg, nil
 }
-func (f *fakeController) SetJWT(token string)            { f.jwt = token }
+func (f *fakeController) SetJWT(token string) { f.jwt = token }
+func (f *fakeController) Generate(_ context.Context, prompt string, temperature float64) (string, string, error) {
+	if f.generateErr != nil {
+		return "", "", f.generateErr
+	}
+	f.lastPrompt, f.lastTemperature = prompt, temperature
+	return "distilled: " + prompt, "test-model:3b", nil
+}
 func (f *fakeController) SetPairingKey(key string) error { f.pairingKey = key; return nil }
 func (f *fakeController) Shutdown()                      { f.shutdowns.Add(1) }
 
