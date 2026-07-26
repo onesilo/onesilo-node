@@ -38,6 +38,10 @@ const (
 	// is missing; kicks (config/tunnel/token changes) wake it early.
 	idleInterval = time.Hour
 	probeTimeout = 5 * time.Second
+	// subscriptionRetryInterval backs off after a 402 (remote access needs a
+	// paid plan). Long enough not to hammer the control plane or spam logs,
+	// short enough that an upgrade is picked up without a restart.
+	subscriptionRetryInterval = 10 * time.Minute
 )
 
 // Manager owns the register / heartbeat / delete lifecycle against the
@@ -53,14 +57,15 @@ type Manager struct {
 
 	kick chan struct{}
 
-	mu            sync.Mutex
-	deviceID      string
-	accountID     string
-	tunnelURL     string
-	registered    bool
-	registeredURL string
-	authBlocked   bool
-	interval      time.Duration
+	mu                  sync.Mutex
+	deviceID            string
+	accountID           string
+	tunnelURL           string
+	registered          bool
+	registeredURL       string
+	authBlocked         bool
+	subscriptionBlocked bool
+	interval            time.Duration
 }
 
 // NewManager builds the registration manager. deviceName/modelName/
@@ -136,6 +141,16 @@ func (m *Manager) Identity() (deviceID, accountID string) {
 	return m.deviceID, m.accountID
 }
 
+// SubscriptionBlocked reports whether the control plane refused remote
+// registration because the owner's plan doesn't include remote access (a 402
+// from the destinations API). Surfaced in admin status so the UI can explain
+// why an exposed node isn't reachable from anywhere.
+func (m *Manager) SubscriptionBlocked() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.subscriptionBlocked
+}
+
 // Run drives the lifecycle until ctx is cancelled, then deletes the
 // registration (graceful shutdown).
 func (m *Manager) Run(ctx context.Context) {
@@ -205,6 +220,17 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 		m.logger.Info("registration waiting for auth token", "error", err)
 		m.setAuthBlocked()
 		return idleInterval
+	case IsStatus(err, http.StatusPaymentRequired):
+		// Remote access (being reachable through the control plane) is a paid
+		// feature. The node keeps serving locally; back off and re-check so an
+		// upgrade is picked up without a restart.
+		m.logger.Warn("remote access requires a paid One Silo subscription — " +
+			"the node keeps working on your local network; upgrade at onesilo.com to be reachable from anywhere")
+		m.mu.Lock()
+		m.subscriptionBlocked = true
+		m.registered = false
+		m.mu.Unlock()
+		return subscriptionRetryInterval
 	case IsStatus(err, http.StatusNotFound):
 		// Backend endpoints not deployed yet — expected during rollout.
 		m.logger.Warn("destinations API not available yet (404), will retry", "url", m.client.baseURL())
@@ -232,6 +258,7 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 		m.accountID = resp.AccountID
 	}
 	m.registered = true
+	m.subscriptionBlocked = false
 	m.registeredURL = url
 	m.interval = interval
 	m.mu.Unlock()
@@ -256,6 +283,16 @@ func (m *Manager) heartbeat(ctx context.Context, interval time.Duration) time.Du
 		m.setAuthBlocked()
 		m.setUnregistered()
 		return idleInterval
+	case IsStatus(err, http.StatusPaymentRequired):
+		// Subscription lapsed: stop refreshing so the destination falls out of
+		// discovery at TTL. The node keeps serving locally.
+		m.logger.Warn("remote access requires a paid One Silo subscription — " +
+			"dropping remote registration; the node still works on your local network")
+		m.mu.Lock()
+		m.subscriptionBlocked = true
+		m.mu.Unlock()
+		m.setUnregistered()
+		return subscriptionRetryInterval
 	case IsStatus(err, http.StatusNotFound):
 		// Registration expired or endpoint was rolled back — re-register.
 		m.logger.Warn("heartbeat 404, re-registering", "device_id", deviceID)
