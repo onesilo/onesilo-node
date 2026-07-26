@@ -20,8 +20,10 @@ import (
 	"github.com/onesilo/silo-node/internal/controlplane"
 )
 
-// signInTimeout bounds how long setup waits for the browser approval.
-const signInTimeout = 5 * time.Minute
+// signInTimeout bounds how long setup waits for the browser approval. It
+// is deliberately generous: the Clerk-hosted page lets a new user create
+// their account mid-flow (sign-up + email verification) before approving.
+const signInTimeout = 10 * time.Minute
 
 // errUserNotFound wraps sign-in failures that read as "no account": the
 // wizard turns it into a create-an-account pointer.
@@ -81,7 +83,7 @@ func signIn(ctx context.Context, controlPlaneURL, dataDir, deviceName string, ou
 		"code_challenge_method": {"S256"},
 	}.Encode()
 
-	fmt.Fprintf(out, "  Open this URL to sign in (waiting up to %s):\n\n    %s\n\n", signInTimeout, authURL)
+	fmt.Fprintf(out, "  Sign in — or create your account — in the browser (waiting up to %s):\n\n    %s\n\n", signInTimeout, authURL)
 	openBrowser(authURL)
 
 	code, err := waitForCallback(ctx, ln, state)
