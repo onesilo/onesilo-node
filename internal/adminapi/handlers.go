@@ -194,6 +194,34 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 
+	authed("GET /v1/pairing/pending", func(w http.ResponseWriter, r *http.Request) {
+		pending := ctrl.PendingPairings()
+		if pending == nil {
+			pending = []PairingPending{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"pending": pending})
+	})
+
+	authed("POST /v1/pairing/verify", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			AccountID string `json:"account_id"`
+			AppIDPub  string `json:"app_id_pub"`
+		}
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil || body.AccountID == "" || body.AppIDPub == "" {
+			writeError(w, http.StatusBadRequest,
+				"expected JSON body {\"account_id\": \"...\", \"app_id_pub\": \"...\"}")
+			return
+		}
+		if err := ctrl.VerifyPairing(body.AccountID, body.AppIDPub); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		logger.Info("pairing SAS confirmed via admin API")
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
+
 	authed("POST /v1/compute/generate", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Prompt      string   `json:"prompt"`

@@ -317,3 +317,50 @@ composed.
 - Node identity-key **rotation** UX and the re-pin ("safety number changed")
   flow when `device_identity.key` is lost or wrapped-key recovery fails —
   scope during the node PR.
+
+## Implementation notes (node)
+
+The node side is implemented in `internal/pairing` (pure protocol) and wired
+into the WebSocket server in `internal/lanserve`. The build follows the
+"take the more secure option" decisions above, so the shipped construction is
+a hardened superset of the two-frame sketch earlier in this doc:
+
+- **Three frames, mutually key-confirmed.** `pair_hello` (app→node),
+  `pair_ack` (node→app, carries the node's confirmation MAC), `pair_confirm`
+  (app→node, carries the app's confirmation MAC). Traffic only flows after
+  both MACs verify — a key mismatch or MITM fails confirmation instead of
+  silently agreeing to different keys.
+- **Ephemeral + static ECDH.** Each side contributes a per-connection
+  ephemeral P-256 key *and* its long-term identity key; the session key is
+  `HKDF(ee ‖ ss, salt = H(transcript), info = "onesilo-pairing-v1")`. The
+  ephemerals give forward secrecy (a later identity-key theft can't decrypt
+  recorded sessions); the static keys authenticate.
+- **Transcript binding.** Every public value — both identity keys, both
+  ephemerals, both nonces, and the SHA-256 of the exact assertion bytes — is
+  length-prefixed into the KDF salt and the confirmation MACs, so any
+  substituted key/nonce or a replayed assertion yields a different key.
+- **Assertion↔key binding.** The node verifies the control-plane assertion
+  (ES256 over the OAuth JWKS, `kid`-pinned, `aud`/`exp` checked) *and* that
+  its `app_id_pub` claim equals the identity key presented in `pair_hello`
+  and used for the static DH. The assertion is also bound to *this* node's
+  registered device id **and** `account_id` (captured at
+  registration), closing a cross-tenant confused-deputy even against a
+  validly signed assertion for another node/account.
+- **Per-connection keys, no downgrade.** The derived key lives on the
+  session, not in a shared file. Once a connection has begun a handshake it
+  is handshake-only: it can never fall back to the legacy `pairing.key`.
+- **TOFU pinning + required first-contact SAS.** App identity keys are pinned
+  in `<data_dir>/paired_devices.json`. A first-contact key is held
+  *unverified*: `user_message` inference is refused (`PAIRING_UNVERIFIED`)
+  until the 8-digit SAS is confirmed in the node admin UI
+  (`POST /v1/pairing/verify`; pending list at `GET /v1/pairing/pending`). A
+  changed key for an already-verified account is a hard stop
+  (`ErrSafetyNumberChanged`). Set `lan.require_pairing_verification = false`
+  to trust-on-first-use without the manual SAS step.
+- **JWKS fetch.** The node fetches the assertion-signing keys from the
+  control plane's `/oauth/jwks`, caches them, serves a stale cache through a
+  transient control-plane outage, and refreshes once (rate-limited) on an
+  unknown `kid` so a key rotation is picked up without a restart.
+
+The envelope wire format (AES-256-GCM combined) and the LAN QR / `pairing.key`
+fallback are unchanged.

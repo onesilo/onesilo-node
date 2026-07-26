@@ -39,6 +39,14 @@ type KeySource interface {
 	Keys(ctx context.Context) (ECPublicKeys, error)
 }
 
+// KidRefresher is an optional KeySource capability: when a token references
+// a kid absent from the cached set, the verifier calls KeysForKid once to
+// let the source pick up a key rotation before failing closed. The source
+// is responsible for rate-limiting to avoid a bad-kid fetch storm.
+type KidRefresher interface {
+	KeysForKid(ctx context.Context, kid string) (ECPublicKeys, error)
+}
+
 // AssertionVerifier verifies an ES256 pairing-assertion JWT and enforces
 // that its claims bind to *this* node. It is a net-new inbound verifier:
 // the node was previously only an outbound token presenter, so this is the
@@ -94,6 +102,16 @@ func (v *AssertionVerifier) Verify(ctx context.Context, token string) (*Assertio
 		return nil, fmt.Errorf("loading assertion signing keys: %w", err)
 	}
 	pub := keys[hdr.Kid]
+	if pub == nil {
+		// The kid is unknown to the cached set — likely a control-plane key
+		// rotation. If the source can refresh for a specific kid, give it one
+		// chance before failing closed (the source rate-limits this itself).
+		if kr, ok := v.Keys.(KidRefresher); ok {
+			if refreshed, rerr := kr.KeysForKid(ctx, hdr.Kid); rerr == nil {
+				pub = refreshed[hdr.Kid]
+			}
+		}
+	}
 	if pub == nil {
 		return nil, fmt.Errorf("no trusted assertion key for kid %q", hdr.Kid)
 	}
