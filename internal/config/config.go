@@ -201,6 +201,19 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("control_plane.auth_mode must be one of %q, %q or %q, got %q",
 			AuthModeJWT, AuthModeAPIKey, AuthModeOAuth, c.ControlPlane.AuthMode)
 	}
+	// Validate the tunnel fields first: Exposed() is derived from tunnel.mode,
+	// so an invalid tunnel.mode must surface as such rather than as a
+	// downstream control-plane URL error.
+	switch c.Tunnel.Mode {
+	case TunnelModeOff, TunnelModeQuick, TunnelModeExternal:
+	default:
+		return fmt.Errorf("tunnel.mode must be one of off|quick|external, got %q", c.Tunnel.Mode)
+	}
+	if c.Tunnel.Mode == TunnelModeExternal {
+		if !strings.HasPrefix(c.Tunnel.ExternalURL, "https://") {
+			return fmt.Errorf("tunnel.external_url must be an https:// URL when tunnel.mode is %q", TunnelModeExternal)
+		}
+	}
 	// A node that contacts the control plane — a relay (gateway mode) or an
 	// exposed node registering itself as a destination — sends OAuth codes,
 	// refresh tokens, and bearer JWTs there, so its URL must be https
@@ -210,16 +223,6 @@ func (c *Config) Validate() error {
 	if c.Mode == ModeGateway || c.Exposed() {
 		if err := requireSecureURL("control_plane.url", c.ControlPlane.URL); err != nil {
 			return err
-		}
-	}
-	switch c.Tunnel.Mode {
-	case TunnelModeOff, TunnelModeQuick, TunnelModeExternal:
-	default:
-		return fmt.Errorf("tunnel.mode must be one of off|quick|external, got %q", c.Tunnel.Mode)
-	}
-	if c.Tunnel.Mode == TunnelModeExternal {
-		if !strings.HasPrefix(c.Tunnel.ExternalURL, "https://") {
-			return fmt.Errorf("tunnel.external_url must be an https:// URL when tunnel.mode is %q", TunnelModeExternal)
 		}
 	}
 	if c.DataDir == "" {
@@ -240,7 +243,7 @@ func (c *Config) Validate() error {
 // wire and is rejected.
 func requireSecureURL(name, raw string) error {
 	if raw == "" {
-		return fmt.Errorf("%s must not be empty in gateway mode", name)
+		return fmt.Errorf("%s must not be empty when the node relays or is exposed", name)
 	}
 	u, err := url.Parse(raw)
 	if err != nil {

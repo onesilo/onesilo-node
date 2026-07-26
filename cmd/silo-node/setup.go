@@ -101,7 +101,7 @@ func runSetup(args []string) int {
 	p.printf("  Your One Silo Node can be accessed from anywhere. This tunnel is\n")
 	p.printf("  encrypted end-to-end and can only be accessed by your One Silo\n")
 	p.printf("  authenticated devices such as the One Silo iOS app and web.\n")
-	wantExposed := cfg.Tunnel.Mode != config.TunnelModeOff
+	wantExposed := cfg.Exposed()
 	if p.confirm("  Enable access to this node from anywhere?", wantExposed) {
 		if err := setupTunnel(ctx, &cfg, dataDir, p); err != nil {
 			p.printf("  ! %s\n  ! remote access left off — the node still works locally\n", err)
@@ -112,7 +112,7 @@ func runSetup(args []string) int {
 		// external), not just a quick one.
 		cfg.Tunnel.Mode = config.TunnelModeOff
 	}
-	exposed := cfg.Tunnel.Mode != config.TunnelModeOff
+	exposed := cfg.Exposed()
 
 	// Admin token — generated once, loaded automatically at start.
 	p.printf("\nAdmin API token\n")
