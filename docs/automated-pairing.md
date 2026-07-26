@@ -176,10 +176,12 @@ handle multi-device:
 
 After first contact the guarantee is strong (pinned keys + confirmation +
 PFS); the first-contact step is where "fully automatic" and "provable
-zero-trust-against-the-relay" genuinely trade off. **Product decision
-needed:** require the one-time SAS on first relayed pairing (recommended), or
-accept TOFU-only first contact for zero user steps at the cost of an
-unauthenticated first-contact window against an *active* control plane.
+zero-trust-against-the-relay" trade off. **Decision: take the more secure
+option — the one-time SAS is *required* on the first relayed pairing** (or
+that first pairing is bootstrapped over LAN/QR). This closes the
+active-control-plane first-contact window at the cost of a single one-time
+confirmation; subsequent connections to a pinned peer are automatic. We do
+**not** ship TOFU-only first contact.
 
 ## What changes where
 
@@ -299,12 +301,19 @@ holds the symmetric key), per-connection keys, P-256-for-Secure-Enclave, and
 TOFU+SAS are the right foundations — the fixes above harden *how* they're
 composed.
 
-## Open decisions
+## Decisions & open items
 
-- **First-contact verification (product):** require the one-time SAS on first
-  relayed pairing (recommended), or accept TOFU-only for zero user steps —
-  see the Trust model note.
-- Whether to also upgrade the **LAN** path to the ECDH handshake (dropping QR
-  entirely) or keep QR as the deliberate zero-trust LAN bootstrap.
+**Decided (take the more secure option):**
+
+- **First-contact verification is required.** The one-time SAS must be
+  confirmed on the first relayed pairing (or that first pairing bootstrapped
+  over LAN/QR). No TOFU-only first contact. See the Trust model.
+- **LAN keeps QR as its zero-trust bootstrap.** We do not route local
+  pairing through the control plane — a pure out-of-band local QR is the
+  more private, more-verified LAN path, and it remains the fallback.
+
+**Still open (implementation detail, not security-blocking):**
+
 - Node identity-key **rotation** UX and the re-pin ("safety number changed")
-  flow when `device_identity.key` is lost or wrapped-key recovery fails.
+  flow when `device_identity.key` is lost or wrapped-key recovery fails —
+  scope during the node PR.
