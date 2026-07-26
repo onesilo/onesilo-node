@@ -34,29 +34,39 @@ silo-node ships two ways:
 ## Quickstart
 
 ```bash
-# Build (Go 1.24+)
-make build
+make build              # Go 1.24+
+./bin/silo-node setup   # interactive wizard (or `setup -yes` for defaults)
 
-# First run: enable compute against a local Ollama install
-export SILO_NODE_ADMIN_TOKEN="$(openssl rand -hex 32)"   # guards the admin API
-export SILO_API_KEY="sc_..."                             # from your Silo account
-./bin/silo-node \
-  -compute=true \
-  -auth-mode=api_key \
-  -tunnel-mode=quick        # requires cloudflared installed
+export SILO_API_KEY="sc_..."   # from your Silo account
+./bin/silo-node
 ```
 
-The node connects to (or, with `-ollama-manage=true`, spawns) Ollama, opens
-an ephemeral Cloudflare quick tunnel, and registers with the control plane.
-Check it:
+`setup` asks for what it needs and provisions the rest:
+
+- generates the admin API token at `~/.silo-node/admin.token` (0600) —
+  loaded automatically at start, no env var needed
+  (`SILO_NODE_ADMIN_TOKEN` still wins when set);
+- finds a running Ollama server or an existing install; when there is
+  neither, it downloads the official Ollama release into the data dir and
+  pulls the default model, so compute works with nothing pre-installed;
+- optionally enables device memory (pulling the embedding model for hybrid
+  recall);
+- optionally turns on the Cloudflare quick tunnel, downloading cloudflared
+  the same way;
+- writes it all to `~/.silo-node/config.toml`.
+
+Re-running `setup` is safe — it keeps previous choices as defaults. Check
+the running node:
 
 ```bash
-curl -s -H "Authorization: Bearer $SILO_NODE_ADMIN_TOKEN" \
+curl -s -H "Authorization: Bearer $(cat ~/.silo-node/admin.token)" \
   http://127.0.0.1:8766/v1/status | jq
 ```
 
-For persistent setups, copy [`config.example.toml`](config.example.toml) to
-`~/.silo-node/config.toml` — it documents every option.
+Prefer hand-written config? Copy
+[`config.example.toml`](config.example.toml) to `~/.silo-node/config.toml`
+— it documents every option — and every knob is also a CLI flag / env var
+(`silo-node -h`).
 
 ## Configuration
 
@@ -87,8 +97,9 @@ live by the reconciler and persisted back to the config file. (A changed
 ## Admin API
 
 Bound to `127.0.0.1:<admin.port>` only. Every route except `GET /healthz`
-requires `Authorization: Bearer $SILO_NODE_ADMIN_TOKEN`; if that variable is
-unset the API fails closed.
+requires `Authorization: Bearer <admin token>`. The token comes from
+`SILO_NODE_ADMIN_TOKEN` when set, else from `<data_dir>/admin.token`
+(written by `silo-node setup`); with neither present the API fails closed.
 
 | Route | Purpose |
 |-------|---------|
@@ -123,7 +134,7 @@ over Ollama embeddings whenever the compute capability is also enabled
 | `DELETE /v1/memory/{silo_id}/{memory_id}` | → `{"deleted": true}` |
 
 ```bash
-NODE_KEY=$(curl -s -H "Authorization: Bearer $SILO_NODE_ADMIN_TOKEN" \
+NODE_KEY=$(curl -s -H "Authorization: Bearer $(cat ~/.silo-node/admin.token)" \
   http://127.0.0.1:8766/v1/status | jq -r .node_key)
 curl -s -X POST -H "X-Silo-Node-Key: $NODE_KEY" \
   -d '{"content": "the deploy runs at 9am"}' \

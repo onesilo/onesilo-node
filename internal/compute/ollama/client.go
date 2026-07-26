@@ -1,6 +1,6 @@
 // Package ollama is a hand-rolled HTTP client for the Ollama server API plus
 // a connect-or-manage runtime manager. It deliberately avoids the
-// github.com/ollama/ollama module — we only need four endpoints.
+// github.com/ollama/ollama module — we only need a handful of endpoints.
 package ollama
 
 import (
@@ -172,6 +172,64 @@ func (c *Client) StreamGenerate(ctx context.Context, model, prompt string, tempe
 		}
 	}()
 	return out, nil
+}
+
+// PullProgress is one NDJSON chunk of a streaming /api/pull response.
+type PullProgress struct {
+	Status    string `json:"status"`
+	Digest    string `json:"digest,omitempty"`
+	Total     int64  `json:"total,omitempty"`
+	Completed int64  `json:"completed,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// Pull downloads a model (POST /api/pull), reporting progress chunks to
+// onProgress (may be nil). Blocks until the pull finishes or fails; ctx
+// governs the request lifetime.
+func (c *Client) Pull(ctx context.Context, model string, onProgress func(PullProgress)) error {
+	body, err := json.Marshal(map[string]any{"model": model, "stream": true})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/pull", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Transport-only client: model downloads routinely outlast the client's
+	// overall Timeout; ctx bounds the request instead.
+	resp, err := (&http.Client{Transport: c.http.Transport}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return httpError(resp)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var chunk PullProgress
+		if err := json.Unmarshal(line, &chunk); err != nil {
+			return fmt.Errorf("parsing pull chunk: %w", err)
+		}
+		if chunk.Error != "" {
+			return fmt.Errorf("pulling %s: %s", model, chunk.Error)
+		}
+		if onProgress != nil {
+			onProgress(chunk)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 // --- helpers ---
