@@ -267,7 +267,10 @@ func (c *Client) doJSON(req *http.Request, out any) error {
 	if out == nil {
 		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	// Bound the response body: Ollama is a local trusted process, but a
+	// buggy/compromised one shouldn't be able to OOM the node with an
+	// unbounded JSON body. 32 MiB comfortably covers a full model list.
+	return json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(out)
 }
 
 func httpError(resp *http.Response) error {

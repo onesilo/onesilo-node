@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/onesilo/silo-node/internal/adminui"
 	"github.com/onesilo/silo-node/internal/config"
 )
 
@@ -124,9 +125,16 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 
+	// The embedded admin UI. Static assets are served without auth (the
+	// server binds loopback only); every API call the UI makes still
+	// carries the bearer token.
+	mux.Handle("GET /", adminui.Handler())
+
 	authed := func(pattern string, h http.HandlerFunc) {
 		mux.Handle(pattern, requireAdminToken(adminToken, h))
 	}
+
+	registerUIRoutes(authed, ctrl, logger)
 
 	authed("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, ctrl.Status(r.Context()))

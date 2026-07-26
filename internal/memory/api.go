@@ -2,6 +2,7 @@ package memory
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,15 @@ import (
 // via the admin API's GET /v1/status — deliberately NOT the LAN pairing key
 // (a transport secret must never become an authorization credential).
 const NodeKeyHeader = "X-Silo-Node-Key"
+
+// maxBodyBytes bounds remember/recall request bodies. Memory content is
+// prose, not payloads; a few MB is generous and stops a node-key holder
+// from exhausting node memory with an unbounded body.
+const maxBodyBytes = 4 << 20 // 4 MiB
+
+// maxRecallLimit caps how many hits a single recall may request, bounding
+// the over-fetch + per-hit decryption amplification.
+const maxRecallLimit = 100
 
 // LoadOrCreateNodeKey returns the node API key from <dataDir>/node.key,
 // generating a 32-byte random hex token (0600) on first start.
@@ -69,6 +79,7 @@ func (c *Capability) Handler(nodeKey func() string) http.Handler {
 			Content  string         `json:"content"`
 			Metadata map[string]any `json:"metadata"`
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Content) == "" {
 			writeError(w, http.StatusBadRequest, "expected JSON body {\"content\": \"...\", \"metadata\": {...}?}")
 			return
@@ -86,9 +97,13 @@ func (c *Capability) Handler(nodeKey func() string) http.Handler {
 			Query string `json:"query"`
 			Limit int    `json:"limit"`
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Query) == "" {
 			writeError(w, http.StatusBadRequest, "expected JSON body {\"query\": \"...\", \"limit\": n?}")
 			return
+		}
+		if body.Limit > maxRecallLimit {
+			body.Limit = maxRecallLimit
 		}
 		results, err := c.Recall(r.Context(), r.PathValue("silo_id"), body.Query, body.Limit)
 		if err != nil {
@@ -124,12 +139,21 @@ func RequireNodeKey(nodeKey func() string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		want := nodeKey()
 		got := r.Header.Get(NodeKeyHeader)
-		if want == "" || got == "" || subtle.ConstantTimeCompare([]byte(want), []byte(got)) != 1 {
+		if want == "" || got == "" || !constantTimeEqual(want, got) {
 			writeError(w, http.StatusUnauthorized, "missing or invalid "+NodeKeyHeader)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// constantTimeEqual compares two secrets without leaking length via timing:
+// both are SHA-256'd to a fixed width before the constant-time compare
+// (mirrors the admin-token check in internal/adminapi/auth.go).
+func constantTimeEqual(a, b string) bool {
+	ah := sha256.Sum256([]byte(a))
+	bh := sha256.Sum256([]byte(b))
+	return subtle.ConstantTimeCompare(ah[:], bh[:]) == 1
 }
 
 func writeMemErr(w http.ResponseWriter, err error) {
