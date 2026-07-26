@@ -115,24 +115,33 @@ func (c *Capability) CurrentModel() string {
 // StreamGenerate streams a completion from the node's resolved model. Used
 // by the LAN serving path; ctx cancellation aborts the stream (interrupt).
 func (c *Capability) StreamGenerate(ctx context.Context, prompt string, temperature float64) (<-chan ollama.GenerateResult, error) {
+	stream, _, err := c.StreamGenerateModel(ctx, prompt, temperature)
+	return stream, err
+}
+
+// StreamGenerateModel is StreamGenerate but also reports the model tag the
+// stream actually runs on — resolved at call time, so the answer can't be
+// changed out from under the caller by a concurrent CurrentModel refresh.
+func (c *Capability) StreamGenerateModel(ctx context.Context, prompt string, temperature float64) (<-chan ollama.GenerateResult, string, error) {
 	c.mu.Lock()
 	started := c.started
 	model := c.currentModel
 	c.mu.Unlock()
 	if !started {
-		return nil, errors.New("compute capability not running")
+		return nil, "", errors.New("compute capability not running")
 	}
 	if model == "" {
 		resolved, err := ResolveRunnableModel(ctx, c.manager.Client(), c.getCfg().Ollama.DefaultModel)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		c.mu.Lock()
 		c.currentModel = resolved
 		c.mu.Unlock()
 		model = resolved
 	}
-	return c.manager.Client().StreamGenerate(ctx, model, prompt, temperature)
+	stream, err := c.manager.Client().StreamGenerate(ctx, model, prompt, temperature)
+	return stream, model, err
 }
 
 // Embed computes embeddings via the Ollama server (memory capability's
