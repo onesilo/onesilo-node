@@ -2,6 +2,7 @@ package pairing
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
@@ -64,6 +65,9 @@ func (v *AssertionVerifier) now() time.Time {
 // Verify checks the token's ES256 signature against the JWKS and that every
 // binding claim matches this node. Returns the trusted Assertion or an error.
 func (v *AssertionVerifier) Verify(ctx context.Context, token string) (*Assertion, error) {
+	if v.Keys == nil {
+		return nil, errors.New("assertion verifier has no key source configured")
+	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, errors.New("assertion is not a compact JWT")
@@ -164,25 +168,56 @@ func ParseJWKS(doc []byte) (ECPublicKeys, error) {
 	}
 	out := ECPublicKeys{}
 	for _, k := range parsed.Keys {
-		if k.Kty != "EC" || k.Crv != "P-256" || k.Kid == "" {
+		// Only EC P-256 keys are assertion-signing keys; other kinds (e.g.
+		// the co-published RS256 OAuth key) are legitimately ignored.
+		if k.Kty != "EC" || k.Crv != "P-256" {
 			continue
 		}
-		x, err := b64urlDecode(k.X)
+		// But a *malformed* EC P-256 entry is fail-closed, not skipped:
+		// silently dropping it would resurface later as a confusing "no
+		// trusted key for kid" and hide a real key-format/rotation error.
+		if k.Kid == "" {
+			return nil, errors.New("JWKS EC P-256 key is missing kid")
+		}
+		pub, err := ecP256FromXY(k.X, k.Y)
 		if err != nil {
-			continue
-		}
-		y, err := b64urlDecode(k.Y)
-		if err != nil {
-			continue
-		}
-		pub := &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-			X:     new(big.Int).SetBytes(x),
-			Y:     new(big.Int).SetBytes(y),
+			return nil, fmt.Errorf("JWKS key %q: %w", k.Kid, err)
 		}
 		out[k.Kid] = pub
 	}
 	return out, nil
+}
+
+// ecP256FromXY builds and validates a P-256 public key from base64url JWK
+// coordinates: it rejects wrong-length coordinates and, crucially, points
+// that are not on the curve (an invalid-curve point must never become a
+// trusted verification key).
+func ecP256FromXY(xB64, yB64 string) (*ecdsa.PublicKey, error) {
+	x, err := b64urlDecode(xB64)
+	if err != nil {
+		return nil, fmt.Errorf("bad x coordinate: %w", err)
+	}
+	y, err := b64urlDecode(yB64)
+	if err != nil {
+		return nil, fmt.Errorf("bad y coordinate: %w", err)
+	}
+	if len(x) != 32 || len(y) != 32 {
+		return nil, fmt.Errorf("P-256 coordinates must be 32 bytes (got x=%d, y=%d)", len(x), len(y))
+	}
+	// Validate the point is on the curve by round-tripping through
+	// crypto/ecdh's validating constructor (uncompressed SEC1 point).
+	uncompressed := make([]byte, 0, 65)
+	uncompressed = append(uncompressed, 0x04)
+	uncompressed = append(uncompressed, x...)
+	uncompressed = append(uncompressed, y...)
+	if _, err := ecdh.P256().NewPublicKey(uncompressed); err != nil {
+		return nil, fmt.Errorf("point is not on the P-256 curve: %w", err)
+	}
+	return &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(x),
+		Y:     new(big.Int).SetBytes(y),
+	}, nil
 }
 
 // StaticKeys is a KeySource over a fixed key set (tests, or a

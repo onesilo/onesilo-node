@@ -129,6 +129,27 @@ func TestVerifyRejectsTamperedPayload(t *testing.T) {
 	}
 }
 
+func TestVerifyFailsClosedWithoutKeySource(t *testing.T) {
+	v := &AssertionVerifier{OwnDeviceID: "node-1", OwnAccount: "acct-1"} // Keys nil
+	if _, err := v.Verify(context.Background(), "a.b.c"); err == nil {
+		t.Fatal("expected a clear error when no key source is configured, not a panic")
+	}
+}
+
+func TestParseJWKSFailsClosedOnMalformedEC(t *testing.T) {
+	// A malformed EC P-256 entry must error, not be silently skipped.
+	bad := []byte(`{"keys":[{"kty":"EC","crv":"P-256","kid":"k","x":"!!!","y":"!!!"}]}`)
+	if _, err := ParseJWKS(bad); err == nil {
+		t.Fatal("malformed EC key should fail closed")
+	}
+	// Off-curve point (valid-length but not on the curve) is rejected.
+	z := base64.RawURLEncoding.EncodeToString(make([]byte, 32)) // (0,0) is not on P-256
+	offCurve := []byte(`{"keys":[{"kty":"EC","crv":"P-256","kid":"k","x":"` + z + `","y":"` + z + `"}]}`)
+	if _, err := ParseJWKS(offCurve); err == nil {
+		t.Fatal("off-curve point should be rejected")
+	}
+}
+
 func TestParseJWKSSelectsP256(t *testing.T) {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	x := base64.RawURLEncoding.EncodeToString(key.PublicKey.X.FillBytes(make([]byte, 32)))
