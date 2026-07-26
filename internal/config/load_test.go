@@ -241,14 +241,19 @@ func TestModeValidation(t *testing.T) {
 	}); err == nil || !strings.Contains(err.Error(), "mode must be") {
 		t.Fatalf("expected mode enum error, got %v", err)
 	}
-	// A local node never talks to the control plane: tunnels are rejected.
-	if _, err := Load(LoadOptions{
+	// Exposure is orthogonal to mode: a local node may run a tunnel (it then
+	// registers as a destination) — this is no longer rejected.
+	cfg, err := Load(LoadOptions{
 		FlagValues: map[string]string{"mode": "local", "tunnel-mode": "quick"},
 		LookupEnv:  noEnv,
-	}); err == nil || !strings.Contains(err.Error(), "gateway") {
-		t.Fatalf("expected local+tunnel rejection, got %v", err)
+	})
+	if err != nil {
+		t.Fatalf("local + tunnel should now load, got %v", err)
 	}
-	cfg, err := Load(LoadOptions{
+	if !cfg.Exposed() {
+		t.Fatalf("expected Exposed() true for a tunnelled local node")
+	}
+	cfg, err = Load(LoadOptions{
 		FlagValues: map[string]string{"mode": "gateway", "tunnel-mode": "quick"},
 		LookupEnv:  noEnv,
 	})
@@ -257,6 +262,33 @@ func TestModeValidation(t *testing.T) {
 	}
 	if cfg := Default(); cfg.Mode != ModeLocal {
 		t.Fatalf("default mode must be local, got %q", cfg.Mode)
+	}
+}
+
+func TestExposedNodeRequiresSecureControlPlaneURL(t *testing.T) {
+	// An exposed local node registers with the control plane, so its URL is
+	// held to the same https rule as a gateway.
+	base := Default()
+	base.Mode = ModeLocal
+	base.Tunnel.Mode = TunnelModeExternal
+	base.Tunnel.ExternalURL = "https://node.example.com"
+
+	base.ControlPlane.URL = "http://api.onesilo.com" // plaintext remote
+	if err := base.Validate(); err == nil {
+		t.Error("exposed local node with plaintext control-plane URL should be rejected")
+	}
+
+	base.ControlPlane.URL = "https://api.onesilo.com"
+	if err := base.Validate(); err != nil {
+		t.Errorf("exposed local node with https URL should validate, got %v", err)
+	}
+
+	// An unexposed local node doesn't contact the control plane — plaintext ok.
+	un := Default()
+	un.Mode = ModeLocal
+	un.ControlPlane.URL = "http://api.onesilo.com"
+	if err := un.Validate(); err != nil {
+		t.Errorf("unexposed local node should not validate control-plane URL, got %v", err)
 	}
 }
 

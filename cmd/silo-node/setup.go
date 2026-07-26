@@ -25,11 +25,12 @@ import (
 
 // runSetup implements `silo-node setup`: an interactive wizard that takes a
 // standalone machine from nothing to a runnable node in one command. It
-// asks which mode the node runs in (local: private memory + LLM, no cloud;
-// gateway: control-plane relay), provisions the admin token, sets up local
-// inference (finding or downloading Ollama and pulling the default model),
-// optionally enables device memory, and — gateway mode only — a Cloudflare
-// quick tunnel (downloading cloudflared if needed) and control-plane
+// asks which mode the node runs in (Local Node: private memory + LLM; Local
+// Relay: also relays the control-plane cloud surface) and whether to enable
+// remote access (a Cloudflare quick tunnel, downloading cloudflared if
+// needed), provisions the admin token, sets up local inference (finding or
+// downloading Ollama and pulling the default model), optionally enables
+// device memory, and — for a relay or an exposed node — control-plane
 // credentials. Everything persists to the config file. Every step is
 // idempotent, so re-running setup is always safe.
 func runSetup(args []string) int {
@@ -73,18 +74,43 @@ func runSetup(args []string) int {
 	p.printf("  data dir: %s\n", dataDir)
 	p.printf("  config:   %s\n\n", path)
 
-	// Node mode — everything else branches on this.
-	p.printf("Node mode\n")
-	p.printf("  local   — private: memory and LLM stay on this machine, never talks to the cloud\n")
-	p.printf("  gateway — relay to One Silo: cloud silos, connectors, and MCP, served locally\n")
-	isGateway := p.confirm("  Connect this node to the One Silo control plane (gateway mode)?",
-		cfg.Mode == config.ModeGateway)
+	// Node mode.
+	p.printf("One Silo Node is a self-hosted node in the One Silo control plane.\n")
+	p.printf("Memory and compute happen on this device.\n\n")
+	p.printf("This node can be set up as a local node, or a secure gateway into the\n")
+	p.printf("control plane for local agents.\n\n")
+	modeDef := 1
+	if cfg.Mode == config.ModeGateway {
+		modeDef = 2
+	}
+	choice := p.choose("Which mode do you want?", []string{
+		"Local Node  — memory + LLM served on this device",
+		"Local Relay — also relays One Silo cloud silos, connectors, and MCP to local agents",
+	}, modeDef)
+	isGateway := choice == 2
 	if isGateway {
 		cfg.Mode = config.ModeGateway
 	} else {
 		cfg.Mode = config.ModeLocal
-		cfg.Tunnel.Mode = config.TunnelModeOff // a local node never talks to the control plane
 	}
+
+	// Exposure — reachable from anywhere. Orthogonal to mode: either kind of
+	// node can be exposed so the owner's authenticated apps reach its local
+	// compute/memory remotely.
+	p.printf("\nRemote access\n")
+	p.printf("  Your One Silo Node can be accessed from anywhere. This tunnel is\n")
+	p.printf("  encrypted end-to-end and can only be accessed by your One Silo\n")
+	p.printf("  authenticated devices such as the One Silo iOS app and web.\n")
+	wantExposed := cfg.Tunnel.Mode != config.TunnelModeOff
+	if p.confirm("  Enable access to this node from anywhere?", wantExposed) {
+		if err := setupTunnel(ctx, &cfg, dataDir, p); err != nil {
+			p.printf("  ! %s\n  ! remote access left off — the node still works locally\n", err)
+			cfg.Tunnel.Mode = config.TunnelModeOff
+		}
+	} else if cfg.Tunnel.Mode == config.TunnelModeQuick {
+		cfg.Tunnel.Mode = config.TunnelModeOff
+	}
+	exposed := cfg.Tunnel.Mode != config.TunnelModeOff
 
 	// Admin token — generated once, loaded automatically at start.
 	p.printf("\nAdmin API token\n")
@@ -135,18 +161,10 @@ func runSetup(args []string) int {
 		cfg.Capabilities.Memory = false
 	}
 
-	// Gateway-only steps: tunnel and control-plane credentials.
-	if isGateway {
-		p.printf("\nPublic access (Cloudflare quick tunnel)\n")
-		wantTunnel := cfg.Tunnel.Mode == config.TunnelModeQuick
-		if p.confirm("  Expose this node publicly so Silo apps can reach it from anywhere?", wantTunnel) {
-			if err := setupTunnel(ctx, &cfg, dataDir, p); err != nil {
-				p.printf("  ! %s\n  ! tunnel left %q — the relay still works locally\n", err, cfg.Tunnel.Mode)
-			}
-		} else if cfg.Tunnel.Mode == config.TunnelModeQuick {
-			cfg.Tunnel.Mode = config.TunnelModeOff
-		}
-
+	// A node that relays the control plane (gateway) or is exposed as a
+	// destination must authenticate to One Silo. A purely local, unexposed
+	// node needs no control-plane credential.
+	if isGateway || exposed {
 		setupSignIn(ctx, &cfg, dataDir, p)
 	}
 
@@ -160,29 +178,50 @@ func runSetup(args []string) int {
 	}
 
 	p.printf("\nSetup complete — config written to %s.\n\n", path)
-	p.printf("  mode:    %s\n", cfg.Mode)
+	p.printf("  mode:    %s\n", modeSummary(cfg))
 	p.printf("  compute: %s\n", computeSummary(cfg))
 	p.printf("  memory:  %s\n", enabledWord(cfg.Capabilities.Memory))
 	if isGateway {
 		p.printf("  relay:   http://127.0.0.1:%d%s/... (X-Silo-Node-Key authenticated)\n",
 			cfg.LAN.Port, gateway.RoutePrefix)
-		p.printf("  tunnel:  %s\n", cfg.Tunnel.Mode)
 	}
-	if isGateway {
+	p.printf("  remote:  %s\n", remoteSummary(cfg))
+	if isGateway || exposed {
 		p.printf("  auth:    %s\n", authSummary(cfg))
 	}
 	p.printf("\nStart the node:\n\n")
-	if isGateway && cfg.ControlPlane.AuthMode == config.AuthModeAPIKey {
+	if (isGateway || exposed) && cfg.ControlPlane.AuthMode == config.AuthModeAPIKey {
 		p.printf("  export SILO_API_KEY=\"sc_...\"   # from your One Silo account\n")
 	}
 	p.printf("  silo-node\n")
 	return 0
 }
 
-// setupSignIn authenticates a gateway node to One Silo. The default is the
-// OAuth sign-in (the node gets its own credential and shows up in the
-// dashboard, like the Silo iOS app); an sc_ API key is the fallback for
-// headless machines or when sign-in fails.
+// modeSummary renders the node mode with its product name.
+func modeSummary(cfg config.Config) string {
+	if cfg.Mode == config.ModeGateway {
+		return "Local Relay (gateway)"
+	}
+	return "Local Node"
+}
+
+// remoteSummary describes the exposure axis for the setup summary.
+func remoteSummary(cfg config.Config) string {
+	switch cfg.Tunnel.Mode {
+	case config.TunnelModeQuick:
+		return "reachable from anywhere (Cloudflare quick tunnel)"
+	case config.TunnelModeExternal:
+		return "reachable from anywhere (external URL: " + cfg.Tunnel.ExternalURL + ")"
+	default:
+		return "LAN/localhost only"
+	}
+}
+
+// setupSignIn authenticates a node that talks to One Silo — a Local Relay
+// or an exposed node — to the control plane. The default is the OAuth
+// sign-in (the node gets its own credential and shows up in the dashboard,
+// like the Silo iOS app); an sc_ API key is the fallback for headless
+// machines or when sign-in fails.
 func setupSignIn(ctx context.Context, cfg *config.Config, dataDir string, p *prompter) {
 	p.printf("\nControl plane sign-in\n")
 	if _, err := controlplane.LoadOAuthCredential(dataDir); err == nil {
@@ -191,7 +230,7 @@ func setupSignIn(ctx context.Context, cfg *config.Config, dataDir string, p *pro
 			filepath.Join(dataDir, controlplane.OAuthCredentialFile))
 		return
 	}
-	p.printf("  A gateway node connects with its own One Silo credential, like the Silo iOS app.\n")
+	p.printf("  This node connects with its own One Silo credential, like the Silo iOS app.\n")
 
 	if p.assumeYes {
 		// Non-interactive runs can't complete a browser flow.
@@ -412,6 +451,35 @@ type prompter struct {
 
 func (p *prompter) printf(format string, args ...any) {
 	fmt.Fprintf(p.out, format, args...)
+}
+
+// choose presents a numbered list and returns the selected 1-based index.
+// def (1-based) is used on enter, EOF, and -yes runs.
+func (p *prompter) choose(question string, options []string, def int) int {
+	for i, opt := range options {
+		p.printf("  %d) %s\n", i+1, opt)
+	}
+	if p.assumeYes {
+		p.printf("%s [%d] %d\n", question, def, def)
+		return def
+	}
+	for {
+		p.printf("%s [%d] ", question, def)
+		line, err := p.in.ReadString('\n')
+		if err != nil {
+			p.printf("%d\n", def)
+			return def
+		}
+		s := strings.TrimSpace(line)
+		if s == "" {
+			return def
+		}
+		for i := range options {
+			if s == fmt.Sprintf("%d", i+1) {
+				return i + 1
+			}
+		}
+	}
 }
 
 func (p *prompter) confirm(question string, def bool) bool {
