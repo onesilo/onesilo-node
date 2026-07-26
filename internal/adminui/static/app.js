@@ -427,7 +427,7 @@ async function renderSettings() {
           ? status.tunnel.url
           : (status.tunnel ? status.tunnel.mode : "off")),
       ] : []),
-      ...(reg.subscription_required ? [
+      ...((reg.subscription_required && status.tunnel && status.tunnel.mode !== "off") ? [
         el("dt", null, "Remote access"),
         el("dd", null,
           el("span", { class: "badge badge-orange" }, "subscription required"),

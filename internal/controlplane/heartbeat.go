@@ -229,6 +229,7 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 		m.mu.Lock()
 		m.subscriptionBlocked = true
 		m.registered = false
+		m.registeredURL = "" // keep the unregistered invariant (no stale URL)
 		m.mu.Unlock()
 		return subscriptionRetryInterval
 	case IsStatus(err, http.StatusNotFound):
@@ -288,10 +289,14 @@ func (m *Manager) heartbeat(ctx context.Context, interval time.Duration) time.Du
 		// discovery at TTL. The node keeps serving locally.
 		m.logger.Warn("remote access requires a paid One Silo subscription — " +
 			"dropping remote registration; the node still works on your local network")
+		// Update all related fields under a single lock so no other goroutine
+		// can observe a transient state where the subscription is blocked but
+		// the node still looks registered (or vice versa).
 		m.mu.Lock()
 		m.subscriptionBlocked = true
+		m.registered = false
+		m.registeredURL = ""
 		m.mu.Unlock()
-		m.setUnregistered()
 		return subscriptionRetryInterval
 	case IsStatus(err, http.StatusNotFound):
 		// Registration expired or endpoint was rolled back — re-register.
