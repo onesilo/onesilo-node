@@ -37,7 +37,7 @@ func Settings() []Setting {
 			boolSetting(func(c *Config, v bool) { c.Capabilities.Compute = v })},
 		{"control-plane-url", "SILO_NODE_CONTROL_PLANE_URL", "base URL of the Silo control plane",
 			func(c *Config, v string) error { c.ControlPlane.URL = v; return nil }},
-		{"auth-mode", "SILO_NODE_AUTH_MODE", "control plane auth mode: jwt|api_key",
+		{"auth-mode", "SILO_NODE_AUTH_MODE", "control plane auth mode: jwt|api_key|oauth",
 			func(c *Config, v string) error { c.ControlPlane.AuthMode = v; return nil }},
 		{"device-name", "SILO_NODE_DEVICE_NAME", "device name reported to the control plane (default: hostname)",
 			func(c *Config, v string) error { c.ControlPlane.DeviceName = v; return nil }},

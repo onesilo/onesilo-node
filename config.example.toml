@@ -55,6 +55,10 @@ url = "https://api.onesilo.com"
 #               desktop deployment.
 #   "api_key" - an sc_ API key read from the SILO_API_KEY environment
 #               variable. Use this for Docker / headless deployments.
+#   "oauth"   - the credential stored by the `silo-node setup` sign-in step
+#               (<data_dir>/oauth.json): the node holds its own OAuth grant
+#               — like the Silo iOS app — refreshes tokens automatically,
+#               and appears as a revocable connection in your dashboard.
 auth_mode = "jwt"
 
 # Name shown in the Silo apps for this node. Defaults to the hostname.

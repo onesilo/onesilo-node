@@ -69,18 +69,27 @@ func (s *APIKeyStore) Token() (string, error) {
 	return "", ErrNoToken
 }
 
-// ModalTokenSource picks between JWT and API-key auth based on the live
-// config value, so a PUT /v1/config auth_mode change applies immediately.
+// ModalTokenSource picks between JWT, API-key, and OAuth auth based on the
+// live config value, so a PUT /v1/config auth_mode change applies
+// immediately.
 type ModalTokenSource struct {
-	Mode   func() string // returns config.AuthModeJWT or config.AuthModeAPIKey
+	Mode   func() string // returns a config.AuthMode* value
 	JWT    TokenSource
 	APIKey TokenSource
+	OAuth  TokenSource // may be nil (falls back to ErrNoToken)
 }
 
 // Token implements TokenSource.
 func (m *ModalTokenSource) Token() (string, error) {
-	if m.Mode() == "api_key" {
+	switch m.Mode() {
+	case "api_key":
 		return m.APIKey.Token()
+	case "oauth":
+		if m.OAuth == nil {
+			return "", ErrNoToken
+		}
+		return m.OAuth.Token()
+	default:
+		return m.JWT.Token()
 	}
-	return m.JWT.Token()
 }

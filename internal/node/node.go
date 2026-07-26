@@ -106,6 +106,10 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 		Mode:   func() string { return n.snapshot().ControlPlane.AuthMode },
 		JWT:    n.jwtStore,
 		APIKey: controlplane.NewAPIKeyStore(),
+		OAuth: controlplane.NewOAuthTokenSource(func() (string, error) {
+			cfg := n.snapshot()
+			return cfg.ResolvedDataDir()
+		}),
 	}
 
 	// Gateway relay: exposes the control plane's API/MCP surface to local
