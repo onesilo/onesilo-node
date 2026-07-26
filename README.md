@@ -4,24 +4,37 @@ An open-source node for the [One Silo](https://onesilo.com) network. A node is a
 machine you own — a Mac in your office, a home server, a container on your
 NAS — that serves memory and LLM traffic from your own hardware.
 
-## Modes
+## Modes & remote access
 
-A node runs in one of two modes (`mode` in the config, chosen by the setup
-wizard):
+A node has **two independent axes**, both chosen by the setup wizard:
 
-- **`local`** *(default)* — self-contained and private. Memory and LLM
-  inference are served entirely from this machine; the node **never talks
-  to the One Silo control plane**. Tunnels are rejected by config
-  validation in this mode — there is nothing to phone home to.
-- **`gateway`** — a relay to the One Silo control plane. The node connects
-  with its own credentials (an OAuth sign-in from `silo-node setup`, an
-  `sc_` API key, or a desktop-pushed JWT) and
-  exposes the cloud surface — **cloud silos, connectors, and the MCP
-  gateway** — to local clients at `/v1/cloud/*` on `lan.port`,
-  authenticated by the node key. Local clients get the full One Silo
-  platform without ever holding cloud credentials themselves. Gateway mode
-  can *also* run the local capabilities, and it is the mode where tunnels
-  and destination registration (cloud → node traffic) live.
+**Mode** (`mode` in the config) — what the node *relays*:
+
+- **`local`** *(default, "Local Node")* — memory and LLM inference served
+  entirely from this machine. It does not relay the control plane's cloud
+  surface.
+- **`gateway`** *("Local Relay")* — additionally relays **cloud silos,
+  connectors, and the MCP gateway** to local clients at `/v1/cloud/*` on
+  `lan.port` (node-key authenticated), using its own control-plane
+  credentials. Local clients get the full One Silo platform without ever
+  holding cloud credentials themselves.
+
+**Remote access** (`tunnel.mode`) — whether the node is *reachable* from the
+control plane, independent of mode:
+
+- **`off`** *(default)* — LAN/localhost only.
+- **`quick`** / **`external`** — the node runs a tunnel (a managed
+  Cloudflare quick tunnel, or your own external URL) and **registers itself
+  with the control plane as a destination**. Its local compute and memory
+  become reachable from your One Silo–authenticated apps (the iOS app, web)
+  anywhere. The LLM session is end-to-end encrypted to the node with the
+  device pairing key; the control plane only provides discovery/routing.
+
+The two combine freely: a **Local Node with remote access on** serves purely
+local compute/memory but is reachable from anywhere; a **Local Relay with
+remote access off** relays the cloud to LAN clients but isn't itself exposed.
+Any node that talks to the control plane — a relay, or an exposed node —
+signs in during setup and must use an `https` control-plane URL.
 
 ## Capabilities
 
@@ -55,7 +68,7 @@ silo-node ships two ways:
 make build              # Go 1.24+
 ./bin/silo-node setup   # interactive wizard (or `setup -yes` for defaults)
 
-export SILO_API_KEY="sc_..."   # gateway mode only — from your Silo account
+export SILO_API_KEY="sc_..."   # only if the node relays or is exposed — from your Silo account
 ./bin/silo-node
 ```
 
@@ -71,8 +84,11 @@ export SILO_API_KEY="sc_..."   # gateway mode only — from your Silo account
   pulls the default model, so compute works with nothing pre-installed;
 - optionally enables device memory (pulling the embedding model for hybrid
   recall);
-- gateway mode only: optionally turns on the Cloudflare quick tunnel
-  (downloading cloudflared the same way), then **signs you in to One
+- asks whether to **enable remote access** — a Cloudflare quick tunnel
+  (downloading cloudflared the same way) that makes this node reachable from
+  your authenticated apps anywhere. Available for a Local Node or a Local
+  Relay;
+- for a relay or an exposed node, **signs you in to One
   Silo** — a browser OAuth flow, after which the node holds its own
   refreshable credential (`~/.silo-node/oauth.json`, 0600) and appears in
   your [dashboard connections](https://dashboard.onesilo.com/connections),
@@ -256,8 +272,9 @@ tampering fails the GCM tag. The FTS5 keyword index is contentless
 (`content=''`), so no plaintext leaks through it. Reading `memory.db`
 directly yields only ciphertext.
 
-**Transport.** In gateway mode the control-plane URL must be `https://`
-(loopback `http://` is allowed for local dev), and OAuth discovery
+**Transport.** When the node talks to the control plane (a relay, or an
+exposed node) the control-plane URL must be `https://` (loopback `http://`
+is allowed for local dev), and OAuth discovery
 endpoints are pinned to the issuer's origin and required to be https — so
 authorization codes, PKCE verifiers, and refresh tokens never transit
 plaintext or reach an attacker-chosen host. Credential files are written

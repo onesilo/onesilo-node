@@ -11,19 +11,22 @@ import (
 	"strings"
 )
 
-// Node modes.
+// Node modes. Mode selects what the node *relays*; whether it is reachable
+// from the control plane is the orthogonal "exposure" axis (see Exposed).
 const (
-	// ModeLocal is a self-contained node: local memory and local LLM only.
-	// The node never talks to the One Silo control plane.
+	// ModeLocal ("Local Node") serves local memory and local LLM only and
+	// does not relay the control plane's cloud surface. It may still be
+	// exposed (tunnel + destination registration) so its local compute and
+	// memory are reachable from the owner's authenticated apps.
 	ModeLocal = "local"
-	// ModeGateway is a control-plane relay: the node connects to One Silo
-	// with its own credentials and exposes the cloud surface (cloud silos,
-	// connectors, MCP) to local clients, alongside any local capabilities.
-	// Tunnels and destination registration are gateway-mode features.
+	// ModeGateway ("Local Relay") additionally relays the control plane's
+	// cloud surface (cloud silos, connectors, MCP) to local clients via
+	// /v1/cloud, using its own credentials.
 	ModeGateway = "gateway"
 )
 
-// Tunnel modes.
+// Tunnel modes. A non-"off" tunnel makes the node reachable from the
+// control plane (see Exposed) — available in either node mode.
 const (
 	TunnelModeOff      = "off"
 	TunnelModeQuick    = "quick"
@@ -165,16 +168,22 @@ func Default() Config {
 	}
 }
 
+// Exposed reports whether the node is reachable from the control plane —
+// i.e. a tunnel is configured (a managed quick tunnel or a bring-your-own
+// external URL). An exposed node registers itself as a destination so the
+// owner's authenticated apps can reach its local compute/memory from
+// anywhere. Orthogonal to Mode: a Local Node can be exposed, and a Local
+// Relay can be kept LAN-only.
+func (c *Config) Exposed() bool {
+	return c.Tunnel.Mode != TunnelModeOff
+}
+
 // Validate checks enum fields, port ranges, and mode consistency.
 func (c *Config) Validate() error {
 	switch c.Mode {
 	case ModeLocal, ModeGateway:
 	default:
 		return fmt.Errorf("mode must be %q or %q, got %q", ModeLocal, ModeGateway, c.Mode)
-	}
-	if c.Mode == ModeLocal && c.Tunnel.Mode != TunnelModeOff {
-		return fmt.Errorf("tunnel.mode %q requires mode %q — a %q node never talks to the control plane",
-			c.Tunnel.Mode, ModeGateway, ModeLocal)
 	}
 	switch c.Log.Format {
 	case "text", "json":
@@ -192,15 +201,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("control_plane.auth_mode must be one of %q, %q or %q, got %q",
 			AuthModeJWT, AuthModeAPIKey, AuthModeOAuth, c.ControlPlane.AuthMode)
 	}
-	// A gateway node sends OAuth codes, refresh tokens, and bearer JWTs to
-	// the control plane, so its URL must be https (loopback http is allowed
-	// for local development against a dev control plane). A local node never
-	// contacts the control plane, so its URL is not security-sensitive.
-	if c.Mode == ModeGateway {
-		if err := requireSecureURL("control_plane.url", c.ControlPlane.URL); err != nil {
-			return err
-		}
-	}
+	// Validate the tunnel fields first: Exposed() is derived from tunnel.mode,
+	// so an invalid tunnel.mode must surface as such rather than as a
+	// downstream control-plane URL error.
 	switch c.Tunnel.Mode {
 	case TunnelModeOff, TunnelModeQuick, TunnelModeExternal:
 	default:
@@ -209,6 +212,17 @@ func (c *Config) Validate() error {
 	if c.Tunnel.Mode == TunnelModeExternal {
 		if !strings.HasPrefix(c.Tunnel.ExternalURL, "https://") {
 			return fmt.Errorf("tunnel.external_url must be an https:// URL when tunnel.mode is %q", TunnelModeExternal)
+		}
+	}
+	// A node that contacts the control plane — a relay (gateway mode) or an
+	// exposed node registering itself as a destination — sends OAuth codes,
+	// refresh tokens, and bearer JWTs there, so its URL must be https
+	// (loopback http is allowed for local dev against a dev control plane).
+	// A purely local, unexposed node never talks to the control plane, so
+	// its URL is not security-sensitive.
+	if c.Mode == ModeGateway || c.Exposed() {
+		if err := requireSecureURL("control_plane.url", c.ControlPlane.URL); err != nil {
+			return err
 		}
 	}
 	if c.DataDir == "" {
@@ -229,7 +243,7 @@ func (c *Config) Validate() error {
 // wire and is rejected.
 func requireSecureURL(name, raw string) error {
 	if raw == "" {
-		return fmt.Errorf("%s must not be empty in gateway mode", name)
+		return fmt.Errorf("%s must not be empty when the node relays or is exposed", name)
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
