@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/onesilo/silo-node/internal/fsutil"
 )
 
 // identityKeyFile holds the node's long-term P-256 identity private key.
@@ -45,33 +47,8 @@ func LoadOrCreateIdentity(dataDir string) (*ecdh.PrivateKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("generating identity key: %w", err)
 	}
-	if err := writeFileAtomic(path, []byte(hex.EncodeToString(priv.Bytes())), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomic(path, []byte(hex.EncodeToString(priv.Bytes())), 0o600); err != nil {
 		return nil, fmt.Errorf("writing identity key: %w", err)
 	}
 	return priv, nil
-}
-
-// writeFileAtomic writes data to a temp file in the same directory (created
-// with perm from the start) and renames it into place, so a crash mid-write
-// can never leave a truncated key.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
 }
