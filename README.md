@@ -136,6 +136,7 @@ requires `Authorization: Bearer <admin token>`. The token comes from
 | `PUT /v1/config` | partial update; persisted + reconciled live |
 | `POST /v1/auth/jwt` | push a fresh control-plane JWT (in-memory) |
 | `POST /v1/auth/pairing-key` | store the LAN pairing key (64 hex chars) |
+| `POST /v1/compute/generate` | one-shot completion on the node's local model — lets local agents (e.g. a Buzz memory agent) distill privately before anything reaches the control plane; body `{"prompt": "...", "temperature": 0.2?}` |
 | `POST /v1/shutdown` | graceful shutdown (deregisters first) |
 
 `silo-node healthcheck` probes `/healthz` and exits 0/1 — wire it to a

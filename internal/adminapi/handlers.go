@@ -2,6 +2,7 @@ package adminapi
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -183,6 +184,39 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 		}
 		logger.Info("pairing key updated via admin API")
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
+
+	authed("POST /v1/compute/generate", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Prompt      string   `json:"prompt"`
+			Temperature *float64 `json:"temperature"`
+		}
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil || body.Prompt == "" {
+			writeError(w, http.StatusBadRequest,
+				"expected JSON body {\"prompt\": \"...\", \"temperature\": 0.2?}")
+			return
+		}
+		// Exactly one JSON object: trailing values or garbage are malformed.
+		if err := dec.Decode(new(struct{})); err != io.EOF {
+			writeError(w, http.StatusBadRequest, "request body must be a single JSON object")
+			return
+		}
+		// Low default: local callers (e.g. a Buzz agent distilling
+		// conversation privately) want extraction, not creativity.
+		temperature := 0.2
+		if body.Temperature != nil {
+			temperature = *body.Temperature
+		}
+		text, model, err := ctrl.Generate(r.Context(), body.Prompt, temperature)
+		if err != nil {
+			// Compute down / Ollama unreachable — the caller should retry
+			// later rather than treat this as a bad request.
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"text": text, "model": model})
 	})
 
 	authed("POST /v1/shutdown", func(w http.ResponseWriter, r *http.Request) {
