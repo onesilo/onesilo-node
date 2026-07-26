@@ -12,6 +12,7 @@ import (
 // ConfigPatch is the PUT /v1/config body: a partial update where only
 // present fields are applied. Mirrors config.Config with pointer fields.
 type ConfigPatch struct {
+	Mode         *string            `json:"mode,omitempty"`
 	DataDir      *string            `json:"data_dir,omitempty"`
 	Log          *LogPatch          `json:"log,omitempty"`
 	Capabilities *CapabilitiesPatch `json:"capabilities,omitempty"`
@@ -73,6 +74,7 @@ func setIf[T any](dst *T, src *T) {
 
 // ApplyTo merges the patch into cfg (present fields only).
 func (p ConfigPatch) ApplyTo(cfg *config.Config) {
+	setIf(&cfg.Mode, p.Mode)
 	setIf(&cfg.DataDir, p.DataDir)
 	if p.Log != nil {
 		setIf(&cfg.Log.Format, p.Log.Format)

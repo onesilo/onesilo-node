@@ -23,6 +23,8 @@ type Setting struct {
 // Settings returns the full override table.
 func Settings() []Setting {
 	return []Setting{
+		{"mode", "SILO_NODE_MODE", "node mode: local (self-contained) | gateway (control-plane relay)",
+			func(c *Config, v string) error { c.Mode = v; return nil }},
 		{"data-dir", "SILO_NODE_DATA_DIR", "directory for node state (device id, pairing key)",
 			func(c *Config, v string) error { c.DataDir = v; return nil }},
 		{"log-format", "SILO_NODE_LOG_FORMAT", "log output format: text|json",
