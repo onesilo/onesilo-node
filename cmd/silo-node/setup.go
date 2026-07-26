@@ -107,7 +107,9 @@ func runSetup(args []string) int {
 			p.printf("  ! %s\n  ! remote access left off — the node still works locally\n", err)
 			cfg.Tunnel.Mode = config.TunnelModeOff
 		}
-	} else if cfg.Tunnel.Mode == config.TunnelModeQuick {
+	} else {
+		// "No" means not exposed — turn off any existing tunnel (quick or
+		// external), not just a quick one.
 		cfg.Tunnel.Mode = config.TunnelModeOff
 	}
 	exposed := cfg.Tunnel.Mode != config.TunnelModeOff
