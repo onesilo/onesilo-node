@@ -91,6 +91,9 @@ type RegistrationStatus struct {
 	Registered bool   `json:"registered"`
 	DeviceID   string `json:"device_id"`
 	AuthMode   string `json:"auth_mode"`
+	// OAuthSignedIn reports whether a usable OAuth credential is stored
+	// (written by `silo-node setup` sign-in). Meaningful in gateway mode.
+	OAuthSignedIn bool `json:"oauth_signed_in"`
 }
 
 // Server is the localhost admin HTTP server.

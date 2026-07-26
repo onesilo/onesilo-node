@@ -138,9 +138,37 @@ requires `Authorization: Bearer <admin token>`. The token comes from
 | `POST /v1/auth/pairing-key` | store the LAN pairing key (64 hex chars) |
 | `POST /v1/compute/generate` | one-shot completion on the node's local model — lets local agents (e.g. a Buzz memory agent) distill privately before anything reaches the control plane; body `{"prompt": "...", "temperature": 0.2?}` |
 | `POST /v1/shutdown` | graceful shutdown (deregisters first) |
+| `GET /v1/silos` | silos with memory counts (backs the admin UI) |
+| `GET /v1/silos/{silo_id}/memories` | every memory in a silo, unsealed |
+| `DELETE /v1/silos/{silo_id}/memories/{memory_id}` | forget one memory |
+| `GET /v1/silos/{silo_id}/export` | download the silo as a `.silo` package ([silo-spec](https://github.com/onesilo/silo-spec) v0.1.1) |
+| `GET /v1/models` | installed Ollama models, active/default flags, pull progress |
+| `POST /v1/models/pull` | start a background model pull; body `{"model": "..."}` |
 
 `silo-node healthcheck` probes `/healthz` and exits 0/1 — wire it to a
 Docker `HEALTHCHECK`.
+
+## Admin UI
+
+The admin port also serves a dashboard at `http://127.0.0.1:8766/` —
+embedded in the binary, no extra install. It asks for the admin token once
+(kept in localStorage) and gives you three pages:
+
+- **Silos** — every silo on the node with its memories: inspect, delete,
+  and **Export .silo** (downloads the silo in the open
+  [silo-spec](https://github.com/onesilo/silo-spec) format, readable by
+  anything that speaks `.silo`).
+- **Models** — the local LLM lineup: see what's installed, pull new models
+  from the Ollama library with live progress, and activate the default
+  model the node serves.
+- **Settings** — the full node configuration (local vs gateway mode,
+  capabilities, control-plane URL + auth mode, connected OAuth account,
+  Ollama, tunnel, LAN) with live status: registration, tunnel URL,
+  capability health, and the node key.
+
+The static page itself is served without auth — the admin server binds
+loopback only — but every API call it makes carries the admin bearer
+token.
 
 ## Memory API
 

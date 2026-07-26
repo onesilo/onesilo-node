@@ -58,6 +58,10 @@ type Node struct {
 	tunnelMu  sync.Mutex
 	tunnelMgr *tunnel.Manager
 
+	// pullMu guards pullState (background model pull for the admin UI).
+	pullMu    sync.Mutex
+	pullState *adminapi.PullState
+
 	runCtx  context.Context
 	cancel  context.CancelFunc
 	started time.Time
@@ -201,7 +205,8 @@ func (n *Node) Run(ctx context.Context) error {
 
 	n.logger.Info("silo-node started",
 		"version", version.Version, "commit", version.Commit,
-		"admin_port", n.snapshot().Admin.Port)
+		"admin_port", n.snapshot().Admin.Port,
+		"admin_ui", fmt.Sprintf("http://127.0.0.1:%d/", n.snapshot().Admin.Port))
 	n.Reconcile(runCtx)
 
 	ticker := time.NewTicker(reconcileInterval)
@@ -382,6 +387,12 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 		siloCount = len(silos)
 	}
 	registered, deviceID := n.regMgr.Status()
+	oauthSignedIn := false
+	if dataDir, err := cfg.ResolvedDataDir(); err == nil {
+		if _, err := controlplane.LoadOAuthCredential(dataDir); err == nil {
+			oauthSignedIn = true
+		}
+	}
 	tunnelURL := n.tunnelURL()
 	if cfg.Tunnel.Mode == config.TunnelModeExternal {
 		tunnelURL = cfg.Tunnel.ExternalURL
@@ -394,9 +405,10 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 		Capabilities:  caps,
 		Tunnel:        adminapi.TunnelStatus{Mode: cfg.Tunnel.Mode, URL: tunnelURL},
 		Registration: adminapi.RegistrationStatus{
-			Registered: registered,
-			DeviceID:   deviceID,
-			AuthMode:   cfg.ControlPlane.AuthMode,
+			Registered:    registered,
+			DeviceID:      deviceID,
+			AuthMode:      cfg.ControlPlane.AuthMode,
+			OAuthSignedIn: oauthSignedIn,
 		},
 		LAN: adminapi.LANStatus{
 			Published: n.lanCap.Published(),
