@@ -7,6 +7,7 @@ package adminapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -52,6 +53,10 @@ type Controller interface {
 	// Shutdown begins graceful node shutdown.
 	Shutdown()
 }
+
+// ErrOpenAIKeyNotFound is returned by Controller.RevokeOpenAIKey for an
+// unknown key id; the handler maps it to 404 and everything else to 500.
+var ErrOpenAIKeyNotFound = errors.New("no such API key")
 
 // OpenAIKey is one minted inference API key's metadata; the secret is
 // never stored or listed.

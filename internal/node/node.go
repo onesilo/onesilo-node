@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/ecdh"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -693,7 +694,6 @@ func (n *Node) Generate(ctx context.Context, prompt string, temperature float64)
 	return b.String(), model, nil
 }
 
-// Shutdown implements adminapi.Controller.
 // OpenAIKeys implements adminapi.Controller.
 func (n *Node) OpenAIKeys() []adminapi.OpenAIKey {
 	keys := n.openaiCap.Keys().List()
@@ -722,9 +722,14 @@ func (n *Node) MintOpenAIKey(name string) (adminapi.MintedOpenAIKey, error) {
 
 // RevokeOpenAIKey implements adminapi.Controller.
 func (n *Node) RevokeOpenAIKey(id string) error {
-	return n.openaiCap.Keys().Revoke(id)
+	err := n.openaiCap.Keys().Revoke(id)
+	if errors.Is(err, openaiapi.ErrKeyNotFound) {
+		return adminapi.ErrOpenAIKeyNotFound
+	}
+	return err
 }
 
+// Shutdown implements adminapi.Controller.
 func (n *Node) Shutdown() {
 	if n.cancel != nil {
 		n.cancel()

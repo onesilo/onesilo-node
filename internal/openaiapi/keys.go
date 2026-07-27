@@ -83,7 +83,7 @@ func (s *KeyStore) Mint(name string) (plaintext string, key Key, err error) {
 	}
 	plaintext = keyPrefix + hex.EncodeToString(secret)
 
-	idBytes := make([]byte, 4)
+	idBytes := make([]byte, 8)
 	if _, err := rand.Read(idBytes); err != nil {
 		return "", Key{}, fmt.Errorf("generating API key id: %w", err)
 	}
@@ -113,8 +113,18 @@ func (s *KeyStore) Revoke(id string) error {
 	defer s.mu.Unlock()
 	for i, k := range s.keys {
 		if k.ID == id {
-			s.keys = append(s.keys[:i], s.keys[i+1:]...)
-			return s.persistLocked()
+			// Copy rather than splice so the original slice survives a
+			// failed persist — memory and disk must not disagree.
+			remaining := make([]Key, 0, len(s.keys)-1)
+			remaining = append(remaining, s.keys[:i]...)
+			remaining = append(remaining, s.keys[i+1:]...)
+			prev := s.keys
+			s.keys = remaining
+			if err := s.persistLocked(); err != nil {
+				s.keys = prev
+				return err
+			}
+			return nil
 		}
 	}
 	return ErrKeyNotFound
@@ -150,12 +160,14 @@ func (s *KeyStore) Verify(presented string) bool {
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	// Compare against every stored hash and decide only after the loop,
+	// so verification time doesn't reveal key position or whether a match
+	// occurred.
+	match := 0
 	for _, k := range s.keys {
-		if subtle.ConstantTimeCompare(presentedHex, []byte(k.SHA256)) == 1 {
-			return true
-		}
+		match |= subtle.ConstantTimeCompare(presentedHex, []byte(k.SHA256))
 	}
-	return false
+	return match == 1
 }
 
 func (s *KeyStore) persistLocked() error {
