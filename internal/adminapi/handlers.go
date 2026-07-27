@@ -2,6 +2,7 @@ package adminapi
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,6 +24,7 @@ type ConfigPatch struct {
 	Ollama       *OllamaPatch       `json:"ollama,omitempty"`
 	Tunnel       *TunnelPatch       `json:"tunnel,omitempty"`
 	LAN          *LANPatch          `json:"lan,omitempty"`
+	OpenAI       *OpenAIPatch       `json:"openai,omitempty"`
 	Admin        *AdminPatch        `json:"admin,omitempty"`
 }
 
@@ -62,6 +64,10 @@ type TunnelPatch struct {
 type LANPatch struct {
 	Enabled *bool `json:"enabled,omitempty"`
 	Port    *int  `json:"port,omitempty"`
+}
+
+type OpenAIPatch struct {
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type AdminPatch struct {
@@ -108,6 +114,9 @@ func (p ConfigPatch) ApplyTo(cfg *config.Config) {
 	if p.LAN != nil {
 		setIf(&cfg.LAN.Enabled, p.LAN.Enabled)
 		setIf(&cfg.LAN.Port, p.LAN.Port)
+	}
+	if p.OpenAI != nil {
+		setIf(&cfg.OpenAI.Enabled, p.OpenAI.Enabled)
 	}
 	if p.Admin != nil {
 		setIf(&cfg.Admin.Port, p.Admin.Port)
@@ -253,6 +262,48 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"text": text, "model": model})
+	})
+
+	authed("GET /v1/openai/keys", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string][]OpenAIKey{"keys": ctrl.OpenAIKeys()})
+	})
+
+	authed("POST /v1/openai/keys", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name string `json:"name"`
+		}
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "expected JSON body {\"name\": \"...\"}")
+			return
+		}
+		if err := dec.Decode(new(struct{})); err != io.EOF {
+			writeError(w, http.StatusBadRequest, "request body must be a single JSON object")
+			return
+		}
+		minted, err := ctrl.MintOpenAIKey(body.Name)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		logger.Info("OpenAI API key minted via admin API", "id", minted.ID, "name", minted.Name)
+		// The plaintext key appears in this response and never again.
+		writeJSON(w, http.StatusCreated, minted)
+	})
+
+	authed("DELETE /v1/openai/keys/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if err := ctrl.RevokeOpenAIKey(id); err != nil {
+			if errors.Is(err, ErrOpenAIKeyNotFound) {
+				writeError(w, http.StatusNotFound, err.Error())
+			} else {
+				writeError(w, http.StatusInternalServerError, err.Error())
+			}
+			return
+		}
+		logger.Info("OpenAI API key revoked via admin API", "id", id)
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	authed("POST /v1/shutdown", func(w http.ResponseWriter, r *http.Request) {

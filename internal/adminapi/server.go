@@ -7,6 +7,7 @@ package adminapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -42,8 +43,35 @@ type Controller interface {
 	// /v1/compute/generate). Errors when the compute capability is not
 	// running or the Ollama call fails.
 	Generate(ctx context.Context, prompt string, temperature float64) (text string, model string, err error)
+	// OpenAIKeys lists minted OpenAI-surface API keys (metadata only).
+	OpenAIKeys() []OpenAIKey
+	// MintOpenAIKey creates an OpenAI-surface API key. The returned
+	// plaintext appears exactly once, in this response.
+	MintOpenAIKey(name string) (MintedOpenAIKey, error)
+	// RevokeOpenAIKey deletes a key by id.
+	RevokeOpenAIKey(id string) error
 	// Shutdown begins graceful node shutdown.
 	Shutdown()
+}
+
+// ErrOpenAIKeyNotFound is returned by Controller.RevokeOpenAIKey for an
+// unknown key id; the handler maps it to 404 and everything else to 500.
+var ErrOpenAIKeyNotFound = errors.New("no such API key")
+
+// OpenAIKey is one minted inference API key's metadata; the secret is
+// never stored or listed.
+type OpenAIKey struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Last4     string    `json:"last4"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// MintedOpenAIKey is the POST /v1/openai/keys response: metadata plus the
+// plaintext key, shown exactly once.
+type MintedOpenAIKey struct {
+	OpenAIKey
+	Key string `json:"key"`
 }
 
 // Status is the GET /v1/status response.

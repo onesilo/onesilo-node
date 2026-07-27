@@ -113,12 +113,26 @@ external_url = ""
 # Local-network LLM serving: Bonjour discovery (_silo-llm._tcp) plus the
 # E2E-encrypted WebSocket protocol the Silo iOS app speaks (see
 # docs/protocol.md). Requires the compute capability to answer chat.
-# NOTE: the LAN server also starts when capabilities.memory is true — the
-# memory API rides the same port. enabled=false then only means no Bonjour
+# NOTE: the LAN server also starts when capabilities.memory or
+# openai.enabled is true — those APIs ride the same port. enabled=false then only means no Bonjour
 # announcement and no LLM chat; the port is still bound.
 # The quick tunnel targets this port as well.
 enabled = false
 port = 8765
+
+[openai]
+# OpenAI-compatible inference surface: /v1/chat/completions, /v1/completions,
+# /v1/models and /v1/embeddings on lan.port (and through any configured
+# tunnel), reverse-proxied to Ollama's native OpenAI-compatible API. Lets
+# third-party tools (IDEs, SDKs — anything that takes an OpenAI base URL +
+# API key) use this node's local model.
+# Auth: bearer API keys minted via the admin API (POST /v1/openai/keys) or
+# the desktop app. Requires capabilities.compute.
+# NOTE: unlike the Silo app protocol this surface is NOT end-to-end
+# encrypted — through a managed/quick tunnel, the tunnel edge can read this
+# traffic. Use tunnel.mode = "external" behind your own ingress if that
+# matters, or keep it LAN-only.
+enabled = false
 
 [admin]
 # Localhost-only admin API port. The Silo Desktop app drives the node

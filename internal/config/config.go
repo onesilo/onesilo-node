@@ -70,6 +70,7 @@ type Config struct {
 	Ollama       Ollama       `toml:"ollama" json:"ollama"`
 	Tunnel       Tunnel       `toml:"tunnel" json:"tunnel"`
 	LAN          LAN          `toml:"lan" json:"lan"`
+	OpenAI       OpenAI       `toml:"openai" json:"openai"`
 	Admin        Admin        `toml:"admin" json:"admin"`
 }
 
@@ -137,6 +138,16 @@ type Admin struct {
 	Port int `toml:"port" json:"port"`
 }
 
+// OpenAI configures the OpenAI-compatible inference surface: bearer-key
+// authenticated /v1/chat/completions (and friends) on the LAN server,
+// reverse-proxied to Ollama's native OpenAI-compatible API. Off by
+// default; requires capabilities.compute. Note that unlike the Silo app
+// protocol this surface is not end-to-end encrypted — through a managed
+// tunnel the tunnel edge can read it.
+type OpenAI struct {
+	Enabled bool `toml:"enabled" json:"enabled"`
+}
+
 // Default returns the built-in defaults.
 func Default() Config {
 	return Config{
@@ -169,6 +180,9 @@ func Default() Config {
 			Enabled:                    false,
 			Port:                       8765,
 			RequirePairingVerification: true,
+		},
+		OpenAI: OpenAI{
+			Enabled: false,
 		},
 		Admin: Admin{
 			Port: 8766,
@@ -242,6 +256,9 @@ func (c *Config) Validate() error {
 	}
 	if err := validPort("admin.port", c.Admin.Port); err != nil {
 		return err
+	}
+	if c.OpenAI.Enabled && !c.Capabilities.Compute {
+		return fmt.Errorf("openai.enabled requires capabilities.compute (the surface proxies to the local model)")
 	}
 	return nil
 }
