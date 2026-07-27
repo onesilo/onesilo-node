@@ -413,8 +413,9 @@ func hasModel(models []ollama.Model, want string) bool {
 	return false
 }
 
-// setupTunnel switches the tunnel to quick mode, downloading cloudflared
-// into data_dir when no install is found.
+// setupTunnel switches the tunnel to managed mode (a stable, One Silo-
+// provisioned hostname), downloading cloudflared into data_dir when no
+// install is found. A pre-existing explicit quick/external choice is kept.
 func setupTunnel(ctx context.Context, cfg *config.Config, dataDir string, p *prompter) error {
 	if bin, err := tunnel.FindBinary(cfg.Tunnel.CloudflaredPath); err == nil {
 		p.printf("  found cloudflared at %s\n", bin)
@@ -440,7 +441,19 @@ func setupTunnel(ctx context.Context, cfg *config.Config, dataDir string, p *pro
 		p.printf("  installed %s\n", bin)
 		cfg.Tunnel.CloudflaredPath = bin
 	}
-	cfg.Tunnel.Mode = config.TunnelModeQuick
+	// Prefer the managed named tunnel: One Silo provisions a stable
+	// hostname for this node (paid feature; the node explains the upgrade
+	// path at runtime if the account is free). Keep an explicit
+	// quick/external choice a user has made in the config; anything else —
+	// off, empty, or an invalid value — becomes managed so the wizard never
+	// leaves remote access enabled with a mode that fails validation.
+	switch cfg.Tunnel.Mode {
+	case config.TunnelModeQuick, config.TunnelModeExternal:
+		p.printf("  keeping existing tunnel mode %q from config\n", cfg.Tunnel.Mode)
+	default:
+		cfg.Tunnel.Mode = config.TunnelModeManaged
+		p.printf("  remote access will use a stable One Silo hostname for this node\n")
+	}
 	return nil
 }
 

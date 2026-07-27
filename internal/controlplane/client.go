@@ -120,6 +120,36 @@ func (c *Client) Heartbeat(ctx context.Context, deviceID string, status map[stri
 	return c.do(ctx, http.MethodPost, path, nil, nil)
 }
 
+// ProvisionTunnelRequest is the POST /api/v1/nodes/tunnel/provision body.
+type ProvisionTunnelRequest struct {
+	DeviceID string `json:"device_id"`
+	// LocalPort is the localhost port cloudflared fronts on this node; the
+	// control plane builds the ingress origin itself.
+	LocalPort int `json:"local_port"`
+}
+
+// ProvisionTunnelResponse carries the managed tunnel's stable hostname and
+// the cloudflared run token for this start. The token is a secret: it is
+// used once to spawn cloudflared and never persisted or logged.
+type ProvisionTunnelResponse struct {
+	Hostname  string `json:"hostname"`
+	TunnelURL string `json:"tunnel_url"`
+	Token     string `json:"token"`
+}
+
+// ProvisionTunnel asks the control plane for this node's managed named
+// tunnel (creating it on first call; the hostname is stable afterwards).
+// Paid feature: a free account gets a 402 (check with IsStatus).
+func (c *Client) ProvisionTunnel(ctx context.Context, deviceID string, localPort int) (*ProvisionTunnelResponse, error) {
+	var resp ProvisionTunnelResponse
+	err := c.do(ctx, http.MethodPost, "/api/v1/nodes/tunnel/provision",
+		ProvisionTunnelRequest{DeviceID: deviceID, LocalPort: localPort}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Delete removes this node's registration. A 404 (already gone) is success.
 func (c *Client) Delete(ctx context.Context, deviceID string) error {
 	err := c.do(ctx, http.MethodDelete, "/api/v1/destinations/"+deviceID, nil, nil)
