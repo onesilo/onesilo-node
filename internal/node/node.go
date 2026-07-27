@@ -59,8 +59,13 @@ type Node struct {
 	jwtStore *controlplane.JWTStore
 	regMgr   *controlplane.Manager
 
-	tunnelMu  sync.Mutex
-	tunnelMgr *tunnel.Manager
+	tunnelMu   sync.Mutex
+	tunnelMgr  *tunnel.Manager
+	managedMgr *tunnel.ManagedManager
+
+	// cpClient is the control-plane API client, shared by the registration
+	// manager and managed-tunnel provisioning.
+	cpClient *controlplane.Client
 
 	// pullMu guards pullState (background model pull for the admin UI).
 	pullMu    sync.Mutex
@@ -163,6 +168,7 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	// identifier and are reported only through the admin API.
 	n.capabilities = []Capability{n.computeCap, n.memoryCap, n.gatewayCap, n.lanCap}
 	client := controlplane.NewClient(func() string { return n.snapshot().ControlPlane.URL }, tokens)
+	n.cpClient = client
 	n.regMgr = controlplane.NewManager(
 		client,
 		dataDir,
@@ -362,11 +368,36 @@ func (n *Node) Reconcile(ctx context.Context) {
 	}
 	n.tunnelMu.Unlock()
 
-	// Registration desired state: quick-tunnel URL, external URL, or none.
-	// An unexposed node always clears it — no registration, no heartbeats.
+	// Managed tunnel: same lifecycle, but the control plane provisions a
+	// stable named tunnel and the URL comes from the provision response.
+	wantManaged := exposed && cfg.Tunnel.Mode == config.TunnelModeManaged && anyEnabled
+	n.tunnelMu.Lock()
+	managedRunning := n.managedMgr != nil
+	if wantManaged && !managedRunning {
+		mgr := tunnel.NewManaged(n.provisionManagedTunnel, cfg.Tunnel.CloudflaredPath,
+			n.logger.With("component", "tunnel"), n.onManagedURLChange)
+		if err := mgr.Start(n.runCtx); err != nil {
+			n.logger.Warn("managed tunnel start failed, will retry", "error", err)
+		} else {
+			n.managedMgr = mgr
+		}
+	} else if !wantManaged && managedRunning {
+		mgr := n.managedMgr
+		n.managedMgr = nil
+		n.tunnelMu.Unlock()
+		mgr.Stop() // fires onManagedURLChange("")
+		n.tunnelMu.Lock()
+	}
+	n.tunnelMu.Unlock()
+
+	// Registration desired state: managed/quick-tunnel URL, external URL, or
+	// none. An unexposed node always clears it — no registration, no
+	// heartbeats.
 	switch {
 	case !exposed:
 		n.regMgr.SetTunnelURL("")
+	case cfg.Tunnel.Mode == config.TunnelModeManaged:
+		n.regMgr.SetTunnelURL(n.managedURL())
 	case cfg.Tunnel.Mode == config.TunnelModeQuick:
 		n.regMgr.SetTunnelURL(n.tunnelURL())
 	case cfg.Tunnel.Mode == config.TunnelModeExternal:
@@ -375,6 +406,55 @@ func (n *Node) Reconcile(ctx context.Context) {
 		n.regMgr.SetTunnelURL("")
 	}
 	n.regMgr.Kick()
+}
+
+// provisionManagedTunnel asks the control plane for this node's managed
+// named tunnel: its stable public URL and a fresh cloudflared run token.
+// Control-plane refusals are mapped to the tunnel package's sentinels so the
+// manager can pace retries and surface the subscription state.
+func (n *Node) provisionManagedTunnel(ctx context.Context) (tunnel.Provisioned, error) {
+	cfg := n.snapshot()
+	dataDir, err := cfg.ResolvedDataDir()
+	if err != nil {
+		return tunnel.Provisioned{}, err
+	}
+	deviceID, err := controlplane.LoadOrCreateDeviceID(dataDir)
+	if err != nil {
+		return tunnel.Provisioned{}, err
+	}
+	resp, err := n.cpClient.ProvisionTunnel(ctx, deviceID, cfg.LAN.Port)
+	switch {
+	case err == nil:
+	case controlplane.IsStatus(err, http.StatusPaymentRequired):
+		return tunnel.Provisioned{}, fmt.Errorf("%w: %w", tunnel.ErrSubscriptionRequired, err)
+	case controlplane.IsStatus(err, http.StatusNotFound) ||
+		controlplane.IsStatus(err, http.StatusServiceUnavailable):
+		return tunnel.Provisioned{}, fmt.Errorf("%w: %w", tunnel.ErrManagedUnavailable, err)
+	default:
+		return tunnel.Provisioned{}, err
+	}
+	return tunnel.Provisioned{URL: resp.TunnelURL, Token: resp.Token}, nil
+}
+
+func (n *Node) onManagedURLChange(url string) {
+	if url == "" {
+		n.logger.Info("managed tunnel down")
+	} else {
+		n.logger.Info("managed tunnel URL", "url", url)
+	}
+	// Only managed mode feeds the registration manager from this callback.
+	if n.snapshot().Tunnel.Mode == config.TunnelModeManaged {
+		n.regMgr.SetTunnelURL(url)
+	}
+}
+
+func (n *Node) managedURL() string {
+	n.tunnelMu.Lock()
+	defer n.tunnelMu.Unlock()
+	if n.managedMgr == nil {
+		return ""
+	}
+	return n.managedMgr.URL()
 }
 
 func (n *Node) onTunnelURLChange(url string) {
@@ -402,9 +482,14 @@ func (n *Node) stopTunnel() {
 	n.tunnelMu.Lock()
 	mgr := n.tunnelMgr
 	n.tunnelMgr = nil
+	managed := n.managedMgr
+	n.managedMgr = nil
 	n.tunnelMu.Unlock()
 	if mgr != nil {
 		mgr.Stop()
+	}
+	if managed != nil {
+		managed.Stop()
 	}
 }
 
@@ -450,9 +535,20 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 		}
 	}
 	tunnelURL := n.tunnelURL()
-	if cfg.Tunnel.Mode == config.TunnelModeExternal {
+	switch cfg.Tunnel.Mode {
+	case config.TunnelModeExternal:
 		tunnelURL = cfg.Tunnel.ExternalURL
+	case config.TunnelModeManaged:
+		tunnelURL = n.managedURL()
 	}
+	// The paid-remote-access refusal can surface at destination
+	// registration/heartbeat (regMgr) or at managed-tunnel provisioning.
+	subscriptionRequired := n.regMgr.SubscriptionBlocked()
+	n.tunnelMu.Lock()
+	if n.managedMgr != nil && n.managedMgr.SubscriptionBlocked() {
+		subscriptionRequired = true
+	}
+	n.tunnelMu.Unlock()
 	return adminapi.Status{
 		Version:       version.Version,
 		Commit:        version.Commit,
@@ -465,7 +561,7 @@ func (n *Node) Status(ctx context.Context) adminapi.Status {
 			DeviceID:             deviceID,
 			AuthMode:             cfg.ControlPlane.AuthMode,
 			OAuthSignedIn:        oauthSignedIn,
-			SubscriptionRequired: n.regMgr.SubscriptionBlocked(),
+			SubscriptionRequired: subscriptionRequired,
 		},
 		LAN: adminapi.LANStatus{
 			Published: n.lanCap.Published(),

@@ -253,3 +253,42 @@ func TestLoadOrCreateDeviceIDReplacesCorrupt(t *testing.T) {
 		t.Fatalf("expected fresh UUID, got %q", id)
 	}
 }
+
+func TestProvisionTunnel(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/nodes/tunnel/provision" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &captured)
+		w.Write([]byte(`{"hostname":"abc123.tunnel.onesilo.com","tunnel_url":"https://abc123.tunnel.onesilo.com","token":"run-token"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv.URL, staticToken("tok"))
+	resp, err := c.ProvisionTunnel(context.Background(), "dev-1", 8765)
+	if err != nil {
+		t.Fatalf("ProvisionTunnel: %v", err)
+	}
+	if resp.TunnelURL != "https://abc123.tunnel.onesilo.com" || resp.Token != "run-token" {
+		t.Errorf("resp = %+v", resp)
+	}
+	if captured["device_id"] != "dev-1" || captured["local_port"] != float64(8765) {
+		t.Errorf("request body = %v", captured)
+	}
+}
+
+func TestProvisionTunnelPaymentRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusPaymentRequired)
+		w.Write([]byte(`{"detail":{"reason":"tier_blocked"}}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv.URL, staticToken("tok"))
+	_, err := c.ProvisionTunnel(context.Background(), "dev-1", 8765)
+	if !IsStatus(err, http.StatusPaymentRequired) {
+		t.Fatalf("err = %v, want 402 APIError", err)
+	}
+}

@@ -51,7 +51,7 @@ func Settings() []Setting {
 			func(c *Config, v string) error { c.Ollama.DefaultModel = v; return nil }},
 		{"ollama-binary", "SILO_NODE_OLLAMA_BINARY", "path to the ollama binary (managed mode)",
 			func(c *Config, v string) error { c.Ollama.BinaryPath = v; return nil }},
-		{"tunnel-mode", "SILO_NODE_TUNNEL_MODE", "tunnel mode: off|quick|external",
+		{"tunnel-mode", "SILO_NODE_TUNNEL_MODE", "tunnel mode: off|managed|quick|external",
 			func(c *Config, v string) error { c.Tunnel.Mode = v; return nil }},
 		{"cloudflared-path", "SILO_NODE_CLOUDFLARED_PATH", "path to the cloudflared binary (quick mode)",
 			func(c *Config, v string) error { c.Tunnel.CloudflaredPath = v; return nil }},
