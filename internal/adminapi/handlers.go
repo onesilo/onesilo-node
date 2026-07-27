@@ -2,6 +2,7 @@ package adminapi
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -294,7 +295,11 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 	authed("DELETE /v1/openai/keys/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if err := ctrl.RevokeOpenAIKey(id); err != nil {
-			writeError(w, http.StatusNotFound, err.Error())
+			if errors.Is(err, ErrOpenAIKeyNotFound) {
+				writeError(w, http.StatusNotFound, err.Error())
+			} else {
+				writeError(w, http.StatusInternalServerError, err.Error())
+			}
 			return
 		}
 		logger.Info("OpenAI API key revoked via admin API", "id", id)

@@ -70,7 +70,10 @@ func TestKeyStoreMintVerifyRevoke(t *testing.T) {
 
 func TestKeyStoreNeverPersistsPlaintext(t *testing.T) {
 	dir := t.TempDir()
-	s, _ := LoadKeyStore(dir)
+	s, err := LoadKeyStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	plaintext, _, err := s.Mint("leaktest")
 	if err != nil {
 		t.Fatal(err)
