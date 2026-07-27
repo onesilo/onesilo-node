@@ -73,13 +73,15 @@ func NewCapability(
 func (c *Capability) Name() string { return "lan" }
 
 // Enabled implements node.Capability: the LAN server must run for LAN
-// serving, for the memory API, for the gateway relay (same port), or when
-// the node is exposed — the tunnel targets this server, so it must be up
-// for remote apps to reach the LLM/memory endpoints.
+// serving, for the memory API, for the gateway relay (same port), for the
+// OpenAI-compatible surface, or when the node is exposed — the tunnel
+// targets this server, so it must be up for remote apps to reach the
+// LLM/memory endpoints.
 func (c *Capability) Enabled() bool {
 	cfg := c.getCfg()
 	return cfg.LAN.Enabled || cfg.Capabilities.Memory ||
-		cfg.Mode == config.ModeGateway || cfg.Exposed()
+		cfg.Mode == config.ModeGateway || cfg.Exposed() ||
+		(cfg.OpenAI.Enabled && cfg.Capabilities.Compute)
 }
 
 // Start implements node.Capability: bind the server, publish Bonjour when

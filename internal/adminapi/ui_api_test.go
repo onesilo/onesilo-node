@@ -265,3 +265,9 @@ func TestAdminUIServed(t *testing.T) {
 		t.Error("index.html does not mention silo-node")
 	}
 }
+
+func (f *fakeUIController) OpenAIKeys() []OpenAIKey { return nil }
+func (f *fakeUIController) MintOpenAIKey(name string) (MintedOpenAIKey, error) {
+	return MintedOpenAIKey{OpenAIKey: OpenAIKey{ID: "key_test", Name: name}, Key: "silo_sk_test"}, nil
+}
+func (f *fakeUIController) RevokeOpenAIKey(id string) error { return nil }

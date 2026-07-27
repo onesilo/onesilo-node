@@ -63,6 +63,12 @@ func (f *fakeController) VerifyPairing(accountID, appIDPub string) error {
 }
 func (f *fakeController) Shutdown() { f.shutdowns.Add(1) }
 
+func (f *fakeController) OpenAIKeys() []OpenAIKey { return nil }
+func (f *fakeController) MintOpenAIKey(name string) (MintedOpenAIKey, error) {
+	return MintedOpenAIKey{OpenAIKey: OpenAIKey{ID: "key_test", Name: name}, Key: "silo_sk_test"}, nil
+}
+func (f *fakeController) RevokeOpenAIKey(id string) error { return nil }
+
 func newTestServer(t *testing.T, token string) (*httptest.Server, *fakeController) {
 	t.Helper()
 	ctrl := &fakeController{cfg: config.Default()}

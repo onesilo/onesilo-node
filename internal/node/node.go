@@ -24,6 +24,7 @@ import (
 	"github.com/onesilo/silo-node/internal/gateway"
 	"github.com/onesilo/silo-node/internal/lanserve"
 	"github.com/onesilo/silo-node/internal/memory"
+	"github.com/onesilo/silo-node/internal/openaiapi"
 	"github.com/onesilo/silo-node/internal/pairing"
 	"github.com/onesilo/silo-node/internal/tunnel"
 	"github.com/onesilo/silo-node/internal/version"
@@ -50,6 +51,7 @@ type Node struct {
 	computeCap   *compute.Capability
 	memoryCap    *memory.Capability
 	gatewayCap   *gateway.Capability
+	openaiCap    *openaiapi.Capability
 	lanCap       *lanserve.Capability
 	nodeKey      string
 	identityKey  *ecdh.PrivateKey
@@ -143,6 +145,15 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	// clients (gateway mode only), authenticated by the node key.
 	n.gatewayCap = gateway.New(n.snapshot, tokens, logger.With("capability", "gateway"))
 
+	// OpenAI-compatible inference surface: bearer-key authenticated
+	// /v1/chat/completions and friends, proxied to Ollama. Keys are minted
+	// through the admin API and persisted (hashed) in the data dir.
+	openaiKeys, err := openaiapi.LoadKeyStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	n.openaiCap = openaiapi.New(n.snapshot, openaiKeys, logger.With("capability", "openai"))
+
 	// The LAN server runs when lan.enabled, memory, or gateway mode is on:
 	// the node HTTP APIs are mounted on the same port. Bonjour only
 	// advertises while lan.enabled (see internal/lanserve).
@@ -150,6 +161,9 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	apiMux := http.NewServeMux()
 	apiMux.Handle("/v1/memory/", n.memoryCap.Handler(nodeKeyFn))
 	apiMux.Handle(gateway.RoutePrefix+"/", n.gatewayCap.Handler(nodeKeyFn))
+	for _, route := range openaiapi.Routes {
+		apiMux.Handle(route, n.openaiCap.Handler())
+	}
 	n.lanCap = lanserve.NewCapability(
 		n.snapshot,
 		n.computeCap,
@@ -166,7 +180,7 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 	// The heartbeat maps compute -> llm_inference and memory ->
 	// silo_recall/silo_remember; "lan" and "gateway" have no control-plane
 	// identifier and are reported only through the admin API.
-	n.capabilities = []Capability{n.computeCap, n.memoryCap, n.gatewayCap, n.lanCap}
+	n.capabilities = []Capability{n.computeCap, n.memoryCap, n.gatewayCap, n.openaiCap, n.lanCap}
 	client := controlplane.NewClient(func() string { return n.snapshot().ControlPlane.URL }, tokens)
 	n.cpClient = client
 	n.regMgr = controlplane.NewManager(
@@ -680,6 +694,37 @@ func (n *Node) Generate(ctx context.Context, prompt string, temperature float64)
 }
 
 // Shutdown implements adminapi.Controller.
+// OpenAIKeys implements adminapi.Controller.
+func (n *Node) OpenAIKeys() []adminapi.OpenAIKey {
+	keys := n.openaiCap.Keys().List()
+	out := make([]adminapi.OpenAIKey, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, adminapi.OpenAIKey{
+			ID: k.ID, Name: k.Name, Last4: k.Last4, CreatedAt: k.CreatedAt,
+		})
+	}
+	return out
+}
+
+// MintOpenAIKey implements adminapi.Controller.
+func (n *Node) MintOpenAIKey(name string) (adminapi.MintedOpenAIKey, error) {
+	plaintext, key, err := n.openaiCap.Keys().Mint(name)
+	if err != nil {
+		return adminapi.MintedOpenAIKey{}, err
+	}
+	return adminapi.MintedOpenAIKey{
+		OpenAIKey: adminapi.OpenAIKey{
+			ID: key.ID, Name: key.Name, Last4: key.Last4, CreatedAt: key.CreatedAt,
+		},
+		Key: plaintext,
+	}, nil
+}
+
+// RevokeOpenAIKey implements adminapi.Controller.
+func (n *Node) RevokeOpenAIKey(id string) error {
+	return n.openaiCap.Keys().Revoke(id)
+}
+
 func (n *Node) Shutdown() {
 	if n.cancel != nil {
 		n.cancel()
