@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/onesilo/silo-node/security/policy
+    url: https://github.com/onesilo/onesilo-node/security/policy
     about: Do not open a public issue. Email security@onesilo.com — see SECURITY.md.
   - name: Question or idea
-    url: https://github.com/onesilo/silo-node/discussions
+    url: https://github.com/onesilo/onesilo-node/discussions
     about: Setup help, design discussion, and anything not yet a concrete bug.

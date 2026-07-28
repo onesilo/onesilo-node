@@ -6,8 +6,8 @@ layout, the rules that keep it safe, and how to get a change merged.
 ## Getting started
 
 ```bash
-git clone https://github.com/onesilo/silo-node
-cd silo-node
+git clone https://github.com/onesilo/onesilo-node
+cd onesilo-node
 make build && make test && make lint
 ```
 
