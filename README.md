@@ -23,12 +23,24 @@ A node has **two independent axes**, both chosen by the setup wizard:
 control plane, independent of mode:
 
 - **`off`** *(default)* — LAN/localhost only.
-- **`quick`** / **`external`** — the node runs a tunnel (a managed
-  Cloudflare quick tunnel, or your own external URL) and **registers itself
-  with the control plane as a destination**. Its local compute and memory
-  become reachable from your One Silo–authenticated apps (the iOS app, web)
-  anywhere. The LLM session is end-to-end encrypted to the node with the
-  device pairing key; the control plane only provides discovery/routing.
+- **`managed`** / **`quick`** / **`external`** — the node runs a tunnel and
+  **registers itself with the control plane as a destination**. Its local
+  compute and memory become reachable from your One Silo–authenticated apps
+  (the iOS app, web) anywhere. The LLM session is end-to-end encrypted to
+  the node with the device pairing key; the control plane only provides
+  discovery/routing.
+
+  `managed` is the preferred option — One Silo provisions a named
+  Cloudflare tunnel so the node keeps a **stable hostname** across
+  restarts. `quick` spawns an ephemeral Cloudflare tunnel whose URL changes
+  every restart (the node re-registers itself). `external` means you run
+  your own ingress and set `external_url`.
+
+  **Any mode other than `off` registers with the control plane, which
+  requires a paid One Silo plan** — including `external`, where you supply
+  the ingress yourself, because the node still registers as a destination.
+  Without a plan the node logs the refusal, backs off, and keeps serving
+  locally. Running a node locally is always free.
 
 The two combine freely: a **Local Node with remote access on** serves purely
 local compute/memory but is reachable from anywhere; a **Local Relay with
@@ -65,7 +77,7 @@ silo-node ships two ways:
 ## Quickstart
 
 ```bash
-make build              # Go 1.24+
+make build              # Go 1.25+
 ./bin/silo-node setup   # interactive wizard (or `setup -yes` for defaults)
 
 export SILO_API_KEY="sc_..."   # only if the node relays or is exposed — from your Silo account
@@ -128,7 +140,7 @@ Precedence: **CLI flags > `SILO_NODE_*` env vars > TOML file > defaults**.
 | `ollama` | `host` | `http://127.0.0.1:11434` | |
 | | `manage` | `false` | spawn `ollama serve` when unreachable |
 | | `default_model` | `llama3.2:3b` | falls back to first installed model |
-| `tunnel` | `mode` | `off` | `off` / `quick` / `external` |
+| `tunnel` | `mode` | `off` | `off` / `managed` / `quick` / `external`; anything but `off` registers with the control plane and needs a paid plan |
 | | `external_url` | — | required for `external` |
 | `lan` | `enabled`, `port` | `false`, `8765` | LAN serving (Bonjour + WebSocket); the server also starts when `capabilities.memory` is on, because the memory API rides the same port |
 | | `require_pairing_verification` | `true` | withhold inference from a first-contact app identity key until its SAS is confirmed in the admin UI ([design](docs/automated-pairing.md)) |

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: lint + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Keep in step with the floor in go.mod.
+          go-version: '1.25'
+          cache: true
+
+      # `make lint` is gofmt + go vet, the same pair CONTRIBUTING.md asks
+      # contributors to run before opening a PR.
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      # Catches breakage in the ldflags wiring that `go test ./...` misses,
+      # since nothing imports cmd/.
+      - name: Build
+        run: make build
+
+  tidy:
+    name: go.mod tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
