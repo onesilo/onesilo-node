@@ -113,7 +113,7 @@ type Ollama struct {
 
 // Tunnel configures how the node becomes reachable from outside the LAN.
 type Tunnel struct {
-	Mode string `toml:"mode" json:"mode"` // "off" | "quick" | "external"
+	Mode string `toml:"mode" json:"mode"` // "off" | "managed" | "quick" | "external"
 	// CloudflaredPath optionally pins the cloudflared binary (quick mode).
 	CloudflaredPath string `toml:"cloudflared_path" json:"cloudflared_path"`
 	// ExternalURL is the public https URL when Mode is "external".

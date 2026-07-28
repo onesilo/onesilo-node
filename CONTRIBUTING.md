@@ -11,7 +11,8 @@ cd silo-node
 make build && make test && make lint
 ```
 
-Go 1.24 or newer. No external services are needed for the test suite —
+Go 1.25 or newer (`go.mod` sets the floor). No external services are
+needed for the test suite —
 everything runs against `httptest` fakes.
 
 ## Layout
