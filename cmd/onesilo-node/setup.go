@@ -46,7 +46,7 @@ func runSetup(args []string) int {
 
 	path := *configPath
 	if path == "" {
-		path = os.Getenv("ONESILO_NODE_CONFIG")
+		path = os.Getenv("SILO_NODE_CONFIG")
 	}
 	if path == "" {
 		path = config.DefaultPath()
@@ -126,8 +126,8 @@ func runSetup(args []string) int {
 	} else {
 		p.printf("  using existing %s\n", filepath.Join(dataDir, adminTokenFile))
 	}
-	if env := os.Getenv("ONESILO_NODE_ADMIN_TOKEN"); env != "" {
-		p.printf("  note: ONESILO_NODE_ADMIN_TOKEN is set in this shell and takes precedence at runtime\n")
+	if env := os.Getenv("SILO_NODE_ADMIN_TOKEN"); env != "" {
+		p.printf("  note: SILO_NODE_ADMIN_TOKEN is set in this shell and takes precedence at runtime\n")
 	}
 
 	// Compute — local LLM inference via Ollama. The point of a local node;

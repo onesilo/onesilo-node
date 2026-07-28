@@ -90,8 +90,8 @@ default_model = "from-file:1b"
 port = 9000
 `)
 	env := map[string]string{
-		"ONESILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
-		"ONESILO_NODE_COMPUTE":              "true",
+		"SILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
+		"SILO_NODE_COMPUTE":              "true",
 	}
 	cfg, err := Load(LoadOptions{
 		Path:      path,
@@ -104,7 +104,7 @@ port = 9000
 		t.Errorf("env should beat file: %q", cfg.Ollama.DefaultModel)
 	}
 	if !cfg.Capabilities.Compute {
-		t.Error("ONESILO_NODE_COMPUTE=true should enable compute")
+		t.Error("SILO_NODE_COMPUTE=true should enable compute")
 	}
 	if cfg.Admin.Port != 9000 {
 		t.Errorf("file value without env override should hold: %d", cfg.Admin.Port)
@@ -113,8 +113,8 @@ port = 9000
 
 func TestLoadFlagsOverrideEnv(t *testing.T) {
 	env := map[string]string{
-		"ONESILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
-		"ONESILO_NODE_ADMIN_PORT":           "9001",
+		"SILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
+		"SILO_NODE_ADMIN_PORT":           "9001",
 	}
 	cfg, err := Load(LoadOptions{
 		FlagValues: map[string]string{

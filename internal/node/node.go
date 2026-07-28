@@ -81,7 +81,7 @@ type Node struct {
 
 // New builds a node from the loaded config. configPath is where admin-API
 // config updates are persisted. adminToken guards the admin API (from
-// ONESILO_NODE_ADMIN_TOKEN; empty fails closed).
+// SILO_NODE_ADMIN_TOKEN; empty fails closed).
 func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) (*Node, error) {
 	n := &Node{
 		logger:     logger,

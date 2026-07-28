@@ -488,7 +488,7 @@ async function renderSettings() {
     field("Auth mode", select("auth_mode", cfg.control_plane.auth_mode, [
       ["oauth", "oauth — signed in via onesilo-node setup"],
       ["jwt", "jwt — token pushed by the desktop app"],
-      ["api_key", "api_key — from ONESILO_NODE_API_KEY"],
+      ["api_key", "api_key — from SILO_NODE_API_KEY"],
     ])),
     el("div", { class: "field-row" },
       field("Ollama host", text("ollama_host", cfg.ollama.host)),

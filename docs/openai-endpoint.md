@@ -32,7 +32,7 @@ Or through the admin API: `PUT /v1/config` with
 ## API keys
 
 Requests authenticate with `Authorization: Bearer <key>`. Keys are minted
-through the admin API (localhost, `ONESILO_NODE_ADMIN_TOKEN`-authenticated):
+through the admin API (localhost, `SILO_NODE_ADMIN_TOKEN`-authenticated):
 
 ```
 POST   /v1/openai/keys          {"name": "cursor"}   → key shown once
@@ -47,7 +47,7 @@ authenticate; losing a key means minting a new one.
 ## Example: Cursor
 
 1. Enable the surface and a tunnel, note the node's hostname.
-2. Mint a key: `curl -H "Authorization: Bearer $ONESILO_NODE_ADMIN_TOKEN" \
+2. Mint a key: `curl -H "Authorization: Bearer $SILO_NODE_ADMIN_TOKEN" \
    -d '{"name":"cursor"}' http://127.0.0.1:8766/v1/openai/keys`
 3. In Cursor: Settings → Models → *Override OpenAI Base URL* →
    `https://<your-node>.onesilo.net/v1`, paste the key, add the model name

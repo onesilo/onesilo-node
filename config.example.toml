@@ -2,7 +2,7 @@
 #
 # Copy to ~/.onesilo-node/config.toml (or pass -config /path/to/config.toml).
 # Every key can also be set by environment variable or CLI flag; precedence
-# is: flags > ONESILO_NODE_* env > this file > built-in defaults.
+# is: flags > SILO_NODE_* env > this file > built-in defaults.
 # Run `onesilo-node -h` for the full flag/env list.
 
 # What this node is:
@@ -14,12 +14,12 @@
 #               surface — cloud silos, connectors, MCP — to local clients
 #               at /v1/cloud/* on lan.port (X-Silo-Node-Key authenticated).
 #               Tunnels and destination registration also require this mode.
-# env: ONESILO_NODE_MODE
+# env: SILO_NODE_MODE
 mode = "local"
 
 # Directory for node state: device_id, pairing.key, and the persisted config
 # when it is updated through the admin API. "~" is expanded.
-# env: ONESILO_NODE_DATA_DIR
+# env: SILO_NODE_DATA_DIR
 data_dir = "~/.onesilo-node"
 
 [log]
@@ -46,7 +46,7 @@ compute = false
 
 [control_plane]
 # Base URL of the Silo backend.
-# env: ONESILO_NODE_CONTROL_PLANE_URL
+# env: SILO_NODE_CONTROL_PLANE_URL
 url = "https://api.onesilo.com"
 
 # How the node authenticates to the control plane:
@@ -143,6 +143,6 @@ enabled = false
 
 [admin]
 # Localhost-only admin API port. The Silo Desktop app drives the node
-# through this API; it is authenticated with the ONESILO_NODE_ADMIN_TOKEN
+# through this API; it is authenticated with the SILO_NODE_ADMIN_TOKEN
 # environment variable (all routes except GET /healthz).
 port = 8766

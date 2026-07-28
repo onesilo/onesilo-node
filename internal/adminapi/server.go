@@ -2,7 +2,7 @@
 // The Silo Desktop app (or an operator's curl) drives the node through it:
 // status, live config updates, auth token pushes, shutdown. It binds
 // 127.0.0.1 exclusively and authenticates every request (except /healthz)
-// against ONESILO_NODE_ADMIN_TOKEN.
+// against SILO_NODE_ADMIN_TOKEN.
 package adminapi
 
 import (

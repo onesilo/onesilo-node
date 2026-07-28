@@ -54,7 +54,7 @@ func run(args []string) int {
 
 	logger := logging.New(cfg.Log)
 
-	// Admin token: ONESILO_NODE_ADMIN_TOKEN wins; otherwise the token file
+	// Admin token: SILO_NODE_ADMIN_TOKEN wins; otherwise the token file
 	// written by `onesilo-node setup` is loaded.
 	dataDir, dirErr := cfg.ResolvedDataDir()
 	if dirErr != nil {
@@ -92,12 +92,12 @@ func registerConfigFlags(fs *flag.FlagSet) {
 	}
 }
 
-// loadConfig resolves the config file path (flag > ONESILO_NODE_CONFIG env >
+// loadConfig resolves the config file path (flag > SILO_NODE_CONFIG env >
 // default) and loads with full precedence.
 func loadConfig(fs *flag.FlagSet, pathFlag string) (config.Config, string, error) {
 	path := pathFlag
 	if path == "" {
-		path = os.Getenv("ONESILO_NODE_CONFIG")
+		path = os.Getenv("SILO_NODE_CONFIG")
 	}
 	if path == "" {
 		path = config.DefaultPath()

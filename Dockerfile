@@ -62,12 +62,12 @@ FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b
 COPY --from=build /onesilo-node   /onesilo-node
 COPY --from=build /cloudflared /cloudflared
 
-# All configuration is environment-driven (ONESILO_NODE_* vars; see
+# All configuration is environment-driven (SILO_NODE_* vars; see
 # `onesilo-node -h`). /data holds node state (device_id, pairing.key) and the
 # optional persisted config.toml written by the admin API.
-ENV ONESILO_NODE_DATA_DIR=/data \
-    ONESILO_NODE_CONFIG=/data/config.toml \
-    ONESILO_NODE_CLOUDFLARED_PATH=/cloudflared
+ENV SILO_NODE_DATA_DIR=/data \
+    SILO_NODE_CONFIG=/data/config.toml \
+    SILO_NODE_CLOUDFLARED_PATH=/cloudflared
 
 VOLUME /data
 

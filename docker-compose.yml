@@ -14,19 +14,19 @@ services:
       # sc_ API key from your Silo account (required; passed through from host).
       SILO_API_KEY: ${SILO_API_KEY:?set SILO_API_KEY to an sc_ key from your Silo account}
       # Optional: guards the localhost admin API inside the container.
-      ONESILO_NODE_ADMIN_TOKEN: ${ONESILO_NODE_ADMIN_TOKEN:-}
+      SILO_NODE_ADMIN_TOKEN: ${SILO_NODE_ADMIN_TOKEN:-}
       # Capabilities this node contributes.
-      ONESILO_NODE_MEMORY: "true"
-      ONESILO_NODE_COMPUTE: "true"
-      ONESILO_NODE_CONTROL_PLANE_URL: ${ONESILO_NODE_CONTROL_PLANE_URL:-https://api.onesilo.com}
-      ONESILO_NODE_AUTH_MODE: api_key
-      ONESILO_NODE_OLLAMA_HOST: http://ollama:11434
+      SILO_NODE_MEMORY: "true"
+      SILO_NODE_COMPUTE: "true"
+      SILO_NODE_CONTROL_PLANE_URL: ${SILO_NODE_CONTROL_PLANE_URL:-https://api.onesilo.com}
+      SILO_NODE_AUTH_MODE: api_key
+      SILO_NODE_OLLAMA_HOST: http://ollama:11434
       # Ephemeral Cloudflare quick tunnel; the cloudflared binary ships in the
       # image. For a stable hostname use a named tunnel instead
-      # (ONESILO_NODE_TUNNEL_MODE=external — see docs/deploy-docker.md).
-      ONESILO_NODE_TUNNEL_MODE: quick
-      ONESILO_NODE_CLOUDFLARED_PATH: /cloudflared
-      ONESILO_NODE_LOG_FORMAT: json
+      # (SILO_NODE_TUNNEL_MODE=external — see docs/deploy-docker.md).
+      SILO_NODE_TUNNEL_MODE: quick
+      SILO_NODE_CLOUDFLARED_PATH: /cloudflared
+      SILO_NODE_LOG_FORMAT: json
     volumes:
       - silo-data:/data
     depends_on:
