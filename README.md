@@ -64,15 +64,36 @@ a public URL (see tunnels below), it registers itself with the Silo control
 plane as a *destination*, heartbeats every ~30 seconds with per-capability
 liveness, and deregisters on shutdown.
 
-onesilo-node ships two ways:
+## Which way to run it
 
-- **Bundled inside Silo Desktop** — the Mac app runs the binary and drives
-  it over the localhost admin API (config, auth tokens, lifecycle). You
-  never interact with it directly.
-- **Standalone / Docker** — run it yourself with a TOML config file and an
-  `sc_` API key. A reproducible distroless image and a compose file with an
-  Ollama sidecar ship in this repo — see
-  [docs/deploy-docker.md](docs/deploy-docker.md).
+**Most people should use [Silo Desktop](https://onesilo.com).** The Mac app
+bundles this binary and drives it over the localhost admin API — config,
+auth tokens, lifecycle — so the node is installed, updated and supervised
+for you and there is nothing to run in a terminal. That is the supported
+path for anyone who just wants a node.
+
+**This repository is for running it yourself**, and assumes you are
+comfortable on a command line. Three ways, all equivalent:
+
+| | |
+|---|---|
+| **Docker** | A reproducible distroless image and a compose file with an Ollama sidecar — see [docs/deploy-docker.md](docs/deploy-docker.md). The best option for a NAS or home server. |
+| **From source** | `make build`, below. Needs Go 1.25+. |
+| **`go install`** | `go install github.com/onesilo/onesilo-node/cmd/onesilo-node@latest` |
+
+Tagged releases also carry prebuilt archives for macOS and Linux on amd64
+and arm64 — see [Releases](#releases). **Those binaries are not signed with
+an Apple Developer ID**, so macOS will refuse to run a downloaded one until
+you clear the quarantine attribute:
+
+```bash
+xattr -d com.apple.quarantine onesilo-node
+```
+
+That is deliberate rather than an oversight: signing is what Silo Desktop
+is for. If clearing a quarantine flag is not something you want to do, use
+the desktop app or Docker, or build from source — a binary you compiled
+yourself is never quarantined.
 
 ## Quickstart
 
@@ -349,6 +370,12 @@ Linux on amd64 and arm64**, each containing the binary, the licence and
 this README, plus a `SHA256SUMS` file — and pushes a multi-architecture
 image to `ghcr.io/onesilo/onesilo-node`. A tag with a hyphen
 (`v0.2.0-rc.1`) is marked as a prerelease automatically.
+
+The macOS archives are **not** Developer ID signed or notarized; see
+[Which way to run it](#which-way-to-run-it). Signed distribution is Silo
+Desktop's job, and adding it here would mean putting a signing certificate
+into this repository's secrets for an audience that is already comfortable
+running `make build`.
 
 **Reproducible, and proven so rather than asserted.** Every target is
 built twice during the release and the build fails if the two binaries
