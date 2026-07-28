@@ -131,6 +131,7 @@ Precedence: **CLI flags > `SILO_NODE_*` env vars > TOML file > defaults**.
 | `tunnel` | `mode` | `off` | `off` / `quick` / `external` |
 | | `external_url` | — | required for `external` |
 | `lan` | `enabled`, `port` | `false`, `8765` | LAN serving (Bonjour + WebSocket); the server also starts when `capabilities.memory` is on, because the memory API rides the same port |
+| | `require_pairing_verification` | `true` | withhold inference from a first-contact app identity key until its SAS is confirmed in the admin UI ([design](docs/automated-pairing.md)) |
 | `admin` | `port` | `8766` | localhost-only admin API |
 
 Config changes made through the admin API (`PUT /v1/config`) are applied
@@ -254,6 +255,19 @@ Three distinct mechanisms, three distinct jobs:
   connections between your own devices (AES-256-GCM on every WebSocket
   payload). It never leaves your machines and is not an authorization
   mechanism. `internal/memory` is forbidden from touching it.
+- **Pairing handshake** — the session key is established by an
+  authenticated ECDH handshake rather than a shared secret typed in by
+  hand. Static P-256 identity keys authenticate each side (P-256 rather
+  than X25519 so the app's private key can live in the Secure Enclave),
+  fresh ephemeral keys per connection give forward secrecy, and HKDF-SHA256
+  binds the full handshake transcript into the derived key. The control
+  plane vouches for device *public* keys and never holds the symmetric key,
+  so it cannot decrypt a session it relays. Unknown app keys are pinned
+  trust-on-first-use and — unless `lan.require_pairing_verification` is
+  turned off — cannot run inference until their short authentication string
+  is confirmed in the admin UI. Scanning a QR code into
+  `POST /v1/auth/pairing-key` remains supported as a fallback. Design and
+  threat model: [docs/automated-pairing.md](docs/automated-pairing.md).
 - **Node key** (`data_dir/node.key`) — bearer credential for the memory
   HTTP API, distinct from the pairing key by design. It is **full memory
   access**: any holder can remember/recall/forget in any silo on the node,
