@@ -2,9 +2,14 @@
 # Reproducible release binaries for onesilo-node.
 #
 # Cross-compiles every published target into dist/, archives each with the
-# licence and README, and writes SHA256SUMS. Build flags are identical to
-# the ones in Dockerfile, so a release binary and the one inside the image
-# are byte-for-byte the same for a given commit.
+# licence and README, and writes SHA256SUMS.
+#
+# Build flags here are identical to the ones in Dockerfile. That is necessary
+# but not sufficient for a release binary and the one inside the image to
+# match byte-for-byte: they must also be built by the same Go toolchain,
+# since different compiler versions emit different code. The release workflow
+# pins its Go version to Dockerfile's builder image for exactly that reason.
+# Locally, `go version` has to match that image for the two to line up.
 #
 # Like scripts/build-image.sh, this proves reproducibility rather than
 # asserting it: every target is built twice and the script fails if the two
@@ -67,8 +72,17 @@ sha256_of() {
     else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-rm -rf "${DIST}"
-mkdir -p "${DIST}"
+# DIST is about to be rm -rf'd, so constrain it to a relative path inside the
+# repo. Without this, DIST=/ or DIST=$HOME deletes the wrong tree, and a value
+# like "-rf" would be parsed as an option rather than a path. `--` stops option
+# parsing for whatever survives the checks.
+case "${DIST}" in
+    ""|-*|/*)      fail "DIST must be a relative path inside the repo, got '${DIST}'" ;;
+    ..|../*|*/../*) fail "DIST must not escape the repo, got '${DIST}'" ;;
+esac
+
+rm -rf -- "${DIST}"
+mkdir -p -- "${DIST}"
 
 echo "==> onesilo-node ${VERSION} (commit ${COMMIT}, SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH})"
 echo

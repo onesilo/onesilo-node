@@ -352,10 +352,17 @@ image to `ghcr.io/onesilo/onesilo-node`. A tag with a hyphen
 
 **Reproducible, and proven so rather than asserted.** Every target is
 built twice during the release and the build fails if the two binaries
-differ. Build flags match [`Dockerfile`](Dockerfile) exactly, so the
-binary in an archive and the one inside the image are byte-identical for a
-given commit. The same guarantee applies to the image itself — see
+differ. The same double-build check covers the image — see
 `scripts/build-image.sh`.
+
+Archives and the container image are built from identical flags *and* the
+same pinned Go toolchain, so the binary in an archive and the one inside
+the image are expected to match for a given commit. Both conditions
+matter: different Go versions emit different code, which is why
+`release.yml` pins its toolchain to the builder image in
+[`Dockerfile`](Dockerfile) rather than tracking the `go.mod` floor that CI
+uses. Note that the archive-versus-image equality is not itself asserted
+by a check — what CI proves is that each is individually reproducible.
 
 **Verify what you downloaded.** Releases carry build provenance
 attestation, so you can confirm an artifact came from this repository's

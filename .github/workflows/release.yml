@@ -35,7 +35,13 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          # MUST match the builder image in Dockerfile (FROM golang:X.Y.Z).
+          # Different Go versions emit different machine code, so a mismatch
+          # silently breaks the property that the binary in an archive and
+          # the one inside the image are identical for a commit. ci.yml
+          # deliberately uses the go.mod floor instead — it tests the oldest
+          # supported toolchain; this job ships bytes.
+          go-version: '1.26.4'
           cache: true
 
       - name: Resolve version
@@ -61,13 +67,19 @@ jobs:
             -C "$RUNNER_TEMP" ./onesilo-node
           out="$("$RUNNER_TEMP/onesilo-node" -version)"
           echo "$out"
-          # A missed ldflags path still compiles and still passes tests — it
-          # only shows up here, as the dev/none fallback.
-          case "$out" in
-            *dev*|*none*) echo "::error::version not stamped: $out"; exit 1 ;;
-          esac
-          grep -q "${{ steps.v.outputs.version }}" <<<"$out" \
-            || { echo "::error::version mismatch: $out"; exit 1; }
+          # Output is: onesilo-node <version> (<commit>)
+          # Compare the version field exactly rather than substring-matching
+          # for the "dev"/"none" fallbacks — a legitimate tag like
+          # v1.0.0-dev.1 contains "dev" and would false-positive, while an
+          # exact match still catches the fallback, since "dev" is never
+          # equal to the tag. A missed ldflags path compiles and passes every
+          # test; this is the only place it surfaces.
+          got="$(printf '%s\n' "$out" | awk '{print $2}')"
+          want='${{ steps.v.outputs.version }}'
+          if [ "$got" != "$want" ]; then
+            echo "::error::version is '$got', expected '$want' (full output: $out)"
+            exit 1
+          fi
 
       - uses: actions/attest-build-provenance@v2
         with:
