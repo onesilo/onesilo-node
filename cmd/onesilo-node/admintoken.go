@@ -13,7 +13,7 @@ import (
 
 // adminTokenFile is the admin API token's location inside data_dir. Written
 // by `onesilo-node setup` and loaded automatically at start when
-// ONESILO_NODE_ADMIN_TOKEN is unset.
+// SILO_NODE_ADMIN_TOKEN is unset.
 const adminTokenFile = "admin.token"
 
 // ensureAdminToken returns the node's persistent admin token, generating
@@ -44,7 +44,7 @@ func ensureAdminToken(dataDir string) (token string, created bool, err error) {
 }
 
 // resolveAdminToken returns the admin token and where it came from:
-// the ONESILO_NODE_ADMIN_TOKEN env var when set ("env"), else
+// the SILO_NODE_ADMIN_TOKEN env var when set ("env"), else
 // <dataDir>/admin.token ("file"), else "" / "".
 func resolveAdminToken(dataDir string, lookup func(string) (string, bool)) (token, source string) {
 	if v, ok := lookup(adminapi.AdminTokenEnvVar); ok && v != "" {

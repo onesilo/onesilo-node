@@ -90,7 +90,7 @@ export SILO_API_KEY="sc_..."   # only if the node relays or is exposed — from 
   `gateway` (One Silo relay) — and branches the remaining steps on it;
 - generates the admin API token at `~/.onesilo-node/admin.token` (0600) —
   loaded automatically at start, no env var needed
-  (`ONESILO_NODE_ADMIN_TOKEN` still wins when set);
+  (`SILO_NODE_ADMIN_TOKEN` still wins when set);
 - finds a running Ollama server or an existing install; when there is
   neither, it downloads the official Ollama release into the data dir and
   pulls the default model, so compute works with nothing pre-installed;
@@ -124,7 +124,7 @@ Prefer hand-written config? Copy
 
 ## Configuration
 
-Precedence: **CLI flags > `ONESILO_NODE_*` env vars > TOML file > defaults**.
+Precedence: **CLI flags > `SILO_NODE_*` env vars > TOML file > defaults**.
 `onesilo-node -h` lists every flag with its matching env var.
 
 | Section | Key | Default | Notes |
@@ -154,7 +154,7 @@ live by the reconciler and persisted back to the config file. (A changed
 
 Bound to `127.0.0.1:<admin.port>` only. Every route except `GET /healthz`
 requires `Authorization: Bearer <admin token>`. The token comes from
-`ONESILO_NODE_ADMIN_TOKEN` when set, else from `<data_dir>/admin.token`
+`SILO_NODE_ADMIN_TOKEN` when set, else from `<data_dir>/admin.token`
 (written by `onesilo-node setup`); with neither present the API fails closed.
 
 | Route | Purpose |

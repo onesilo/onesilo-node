@@ -1,5 +1,5 @@
 // Package config defines the typed onesilo-node configuration and its
-// load/save machinery. Precedence: flags > ONESILO_NODE_* env > TOML file >
+// load/save machinery. Precedence: flags > SILO_NODE_* env > TOML file >
 // defaults (see load.go).
 package config
 

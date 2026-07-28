@@ -15,7 +15,7 @@ import (
 //
 // The admin port is resolved with the same precedence as the main command
 // (flags > env > config file > default), so a container that overrides
-// ONESILO_NODE_ADMIN_PORT health-checks the right port automatically.
+// SILO_NODE_ADMIN_PORT health-checks the right port automatically.
 func runHealthcheck(args []string) int {
 	fs := flag.NewFlagSet("onesilo-node healthcheck", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to TOML config file")
