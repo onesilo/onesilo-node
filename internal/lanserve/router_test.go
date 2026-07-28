@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
 )
 
 // --- test plumbing ---

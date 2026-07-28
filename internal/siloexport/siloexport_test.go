@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/memory"
 )
 
 func readEntry(t *testing.T, zr *zip.Reader, name string) []byte {

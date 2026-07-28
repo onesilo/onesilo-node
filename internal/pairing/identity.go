@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onesilo/silo-node/internal/fsutil"
+	"github.com/onesilo/onesilo-node/internal/fsutil"
 )
 
 // identityKeyFile holds the node's long-term P-256 identity private key.

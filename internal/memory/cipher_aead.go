@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onesilo/silo-node/internal/fsutil"
+	"github.com/onesilo/onesilo-node/internal/fsutil"
 )
 
 // memoryKeyFile holds the per-node memory data key (0600).

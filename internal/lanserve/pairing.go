@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/onesilo/silo-node/internal/pairing"
+	"github.com/onesilo/onesilo-node/internal/pairing"
 )
 
 // Pairer holds the node-wide state for automated device pairing: how to

@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/fsutil"
+	"github.com/onesilo/onesilo-node/internal/fsutil"
 )
 
 // keyPrefix marks node inference keys; the raw secret follows it.

@@ -16,7 +16,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/memory"
 )
 
 // specVersion is the .silo format version this writer emits.

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/memory"
 )
 
 type staticTokens struct {

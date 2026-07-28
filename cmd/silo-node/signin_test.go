@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/controlplane"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
 )
 
 // syncBuffer lets the "browser" goroutine poll wizard output safely.

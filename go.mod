@@ -1,4 +1,4 @@
-module github.com/onesilo/silo-node
+module github.com/onesilo/onesilo-node
 
 go 1.25.0
 

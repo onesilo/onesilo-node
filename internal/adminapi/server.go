@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // Controller is what the admin API needs from the node. Implemented by

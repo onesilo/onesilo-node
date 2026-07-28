@@ -23,10 +23,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/controlplane"
-	"github.com/onesilo/silo-node/internal/memory"
-	"github.com/onesilo/silo-node/internal/version"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
+	"github.com/onesilo/onesilo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/version"
 )
 
 // RoutePrefix is where the relay mounts on the LAN server.
