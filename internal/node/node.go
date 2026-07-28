@@ -18,17 +18,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/adminapi"
-	"github.com/onesilo/silo-node/internal/compute"
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/controlplane"
-	"github.com/onesilo/silo-node/internal/gateway"
-	"github.com/onesilo/silo-node/internal/lanserve"
-	"github.com/onesilo/silo-node/internal/memory"
-	"github.com/onesilo/silo-node/internal/openaiapi"
-	"github.com/onesilo/silo-node/internal/pairing"
-	"github.com/onesilo/silo-node/internal/tunnel"
-	"github.com/onesilo/silo-node/internal/version"
+	"github.com/onesilo/onesilo-node/internal/adminapi"
+	"github.com/onesilo/onesilo-node/internal/compute"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
+	"github.com/onesilo/onesilo-node/internal/gateway"
+	"github.com/onesilo/onesilo-node/internal/lanserve"
+	"github.com/onesilo/onesilo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/openaiapi"
+	"github.com/onesilo/onesilo-node/internal/pairing"
+	"github.com/onesilo/onesilo-node/internal/tunnel"
+	"github.com/onesilo/onesilo-node/internal/version"
 )
 
 // reconcileInterval doubles as the retry cadence for capabilities that

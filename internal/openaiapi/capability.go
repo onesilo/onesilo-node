@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // Routes are the OpenAI-compatible paths the capability serves. Exact

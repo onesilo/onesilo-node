@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // ---------------------------------------------------------------------------

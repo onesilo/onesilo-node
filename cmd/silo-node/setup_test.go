@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onesilo/silo-node/internal/adminapi"
-	"github.com/onesilo/silo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/adminapi"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
 )
 
 func TestEnsureAdminTokenGeneratesOnceWithTightPerms(t *testing.T) {

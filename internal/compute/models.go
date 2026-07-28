@@ -3,7 +3,7 @@ package compute
 import (
 	"context"
 
-	"github.com/onesilo/silo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
 )
 
 // InstalledModels lists the models installed on the Ollama server. The

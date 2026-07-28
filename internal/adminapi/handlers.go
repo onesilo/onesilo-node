@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/onesilo/silo-node/internal/adminui"
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/adminui"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // ConfigPatch is the PUT /v1/config body: a partial update where only

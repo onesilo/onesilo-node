@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/compute/ollama"
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/controlplane"
-	"github.com/onesilo/silo-node/internal/gateway"
-	"github.com/onesilo/silo-node/internal/tunnel"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
+	"github.com/onesilo/onesilo-node/internal/gateway"
+	"github.com/onesilo/onesilo-node/internal/tunnel"
 )
 
 // runSetup implements `silo-node setup`: an interactive wizard that takes a

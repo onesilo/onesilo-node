@@ -50,8 +50,8 @@ ENV CGO_ENABLED=0 \
 
 RUN GOARCH="${TARGETARCH}" go build \
       -ldflags "-s -w -buildid= \
-        -X github.com/onesilo/silo-node/internal/version.Version=${VERSION} \
-        -X github.com/onesilo/silo-node/internal/version.Commit=${COMMIT}" \
+        -X github.com/onesilo/onesilo-node/internal/version.Version=${VERSION} \
+        -X github.com/onesilo/onesilo-node/internal/version.Commit=${COMMIT}" \
       -o /silo-node ./cmd/silo-node
 
 # ---------------------------------------------------------------------------

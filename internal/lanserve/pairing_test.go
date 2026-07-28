@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/pairing"
+	"github.com/onesilo/onesilo-node/internal/pairing"
 )
 
 const testKID = "silo-assert-1"

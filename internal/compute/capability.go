@@ -10,8 +10,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/onesilo/silo-node/internal/compute/ollama"
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // ErrNoModels means the Ollama server is up but has no runnable model.

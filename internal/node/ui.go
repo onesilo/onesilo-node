@@ -6,9 +6,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/adminapi"
-	"github.com/onesilo/silo-node/internal/compute/ollama"
-	"github.com/onesilo/silo-node/internal/siloexport"
+	"github.com/onesilo/onesilo-node/internal/adminapi"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/siloexport"
 )
 
 // adminapi.UIController implementation: the surface behind the embedded

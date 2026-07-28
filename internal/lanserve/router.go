@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/compute/ollama"
-	"github.com/onesilo/silo-node/internal/pairing"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/pairing"
 )
 
 // ComputeBackend is the slice of the compute capability the LAN router

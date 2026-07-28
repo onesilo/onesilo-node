@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // fakeUIController layers UIController onto fakeController.

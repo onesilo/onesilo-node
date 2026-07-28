@@ -15,7 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/onesilo/silo-node/internal/version"
+	"github.com/onesilo/onesilo-node/internal/version"
 )
 
 // APIError is a non-2xx control-plane response.

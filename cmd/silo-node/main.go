@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/onesilo/silo-node/internal/adminapi"
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/logging"
-	"github.com/onesilo/silo-node/internal/node"
-	"github.com/onesilo/silo-node/internal/version"
+	"github.com/onesilo/onesilo-node/internal/adminapi"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/logging"
+	"github.com/onesilo/onesilo-node/internal/node"
+	"github.com/onesilo/onesilo-node/internal/version"
 )
 
 func main() {

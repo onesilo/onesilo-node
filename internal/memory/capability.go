@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // DefaultEmbedModel is used when config leaves memory.embed_model empty.
