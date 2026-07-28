@@ -19,18 +19,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  binaries:
-    name: binaries
+  verify:
+    name: verify and tag
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # create the release
-      id-token: write       # provenance attestation
-      attestations: write
+      # Only what this job needs: it creates the release. Attestation
+      # permissions live on the image job, which is what gets attested.
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          # Tags and full history so the script's `git describe` and
-          # commit-timestamp SOURCE_DATE_EPOCH resolve.
+          # Tags and full history so `git describe` resolves for the
+          # changelog link and the script's version fallback.
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
@@ -53,18 +53,26 @@ jobs:
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           fi
 
-      # Builds every target twice and fails if the two binaries differ, so a
-      # release that ships is a release we have proven reproducible.
-      - name: Build release artifacts
+      # Nothing here is published — releases ship as a container image. This
+      # gates the tag: every supported platform must build, and each must be
+      # reproducible across a double build. darwin is included because
+      # SiloDesktop bundles this daemon for macOS.
+      - name: Verify every platform builds reproducibly
         env:
           VERSION: ${{ steps.v.outputs.version }}
           COMMIT: ${{ github.sha }}
-        run: scripts/build-release.sh
+        run: scripts/verify-builds.sh
 
       - name: Verify the built binary runs and reports its version
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          COMMIT: ${{ github.sha }}
         run: |
-          tar -xzf "dist/onesilo-node_${{ steps.v.outputs.version }}_linux_amd64.tar.gz" \
-            -C "$RUNNER_TEMP" ./onesilo-node
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -buildid= \
+              -X github.com/onesilo/onesilo-node/internal/version.Version=${VERSION} \
+              -X github.com/onesilo/onesilo-node/internal/version.Commit=${COMMIT}" \
+            -o "$RUNNER_TEMP/onesilo-node" ./cmd/onesilo-node
           out="$("$RUNNER_TEMP/onesilo-node" -version)"
           echo "$out"
           # Output is: onesilo-node <version> (<commit>)
@@ -81,15 +89,6 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: 'dist/*.tar.gz'
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-artifacts
-          path: dist/
-
       - name: Publish release
         if: github.event_name == 'push'
         env:
@@ -105,20 +104,24 @@ jobs:
           # gh rejects more than one of --notes/--notes-file/--generate-notes,
           # so the notes are assembled here rather than mixing flags.
           {
-            echo "Binaries for macOS and Linux on amd64 and arm64, plus \`SHA256SUMS\`."
-            echo
-            echo "Every binary is built twice during release and the build fails if the"
-            echo "two differ, so these are reproducible for the tagged commit. Build"
-            echo "provenance is attested — verify a download with:"
-            echo
-            echo '```'
-            echo "gh attestation verify onesilo-node_${VERSION}_linux_amd64.tar.gz --repo ${REPO}"
-            echo '```'
-            echo
-            echo "Container image:"
+            echo "onesilo-node ships as a container image. There are no binary"
+            echo "downloads — see the README for why, and for running it from source."
             echo
             echo '```'
             echo "docker pull ghcr.io/${REPO}:${VERSION}"
+            echo '```'
+            echo
+            echo "The image is reproducible for this commit, and its build provenance"
+            echo "is attested — verify what you pulled actually came from this tag:"
+            echo
+            echo '```'
+            echo "gh attestation verify oci://ghcr.io/${REPO}:${VERSION} --repo ${REPO}"
+            echo '```'
+            echo
+            echo "From source, at this tag:"
+            echo
+            echo '```'
+            echo "go install github.com/${REPO}/cmd/onesilo-node@${VERSION}"
             echo '```'
             if [ -n "$prev" ]; then
               echo
@@ -131,11 +134,11 @@ jobs:
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
 
+          # No assets: the release is a tag with notes pointing at the image.
           gh release create "$VERSION" \
             --title "$VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md" \
-            $prerelease \
-            dist/*.tar.gz dist/SHA256SUMS
+            $prerelease
 
   image:
     name: image

@@ -79,22 +79,24 @@ pick by where it is running:
 | Method | Best for | What it takes |
 |---|---|---|
 | **Docker** | a NAS, a home server, anything long-running | A reproducible distroless image and a compose file with an Ollama sidecar — see [docs/deploy-docker.md](docs/deploy-docker.md). |
-| **From source** | hacking on it, or a machine you already develop on | `make build` (see [Quickstart](#quickstart)). Needs Go 1.25+. |
+| **From source** | hacking on it, or a machine you already develop on | `make build` (see [Quickstart](#quickstart)). |
 | **`go install`** | the quickest start if you already have Go | `go install github.com/onesilo/onesilo-node/cmd/onesilo-node@latest` |
 
-Tagged releases also carry prebuilt archives for macOS and Linux on amd64
-and arm64 — see [Releases](#releases). **Those binaries are not signed with
-an Apple Developer ID**, so macOS will refuse to run a downloaded one until
-you clear the quarantine attribute:
+`go.mod` requires Go 1.25, but you do not need it installed: `GOTOOLCHAIN`
+defaults to `auto`, so any Go from 1.21 onward fetches the right toolchain
+by itself. Both source paths work on whatever Go your distribution ships.
 
-```bash
-xattr -d com.apple.quarantine onesilo-node
-```
+**There are no binary downloads, deliberately.** A tarball is the weakest
+of the options above: on macOS it would be unsigned and Gatekeeper would
+block it, and on Linux the image already does the job better — it carries a
+checksum-pinned `cloudflared` with it, is addressed by digest rather than
+filename, and is reproducible with its build provenance attested. Shipping
+loose binaries as well would add the one artifact we could not stand behind
+without also becoming an Apple-notarized distributor, which is what Silo
+Desktop is for.
 
-That is deliberate rather than an oversight: signing is what Silo Desktop
-is for. If clearing a quarantine flag is not something you want to do, use
-the desktop app or Docker, or build from source — a binary you compiled
-yourself is never quarantined.
+Tags are still the stable versions — pin them with `go install …@v0.2.0` or
+`ghcr.io/onesilo/onesilo-node:v0.2.0`.
 
 ## Quickstart
 
@@ -366,45 +368,43 @@ step.
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-That produces a GitHub release with `tar.gz` archives for **macOS and
-Linux on amd64 and arm64**, each containing the binary, the licence and
-this README, plus a `SHA256SUMS` file — and pushes a multi-architecture
-image to `ghcr.io/onesilo/onesilo-node`. A tag with a hyphen
-(`v0.2.0-rc.1`) is marked as a prerelease automatically.
+That pushes a multi-architecture image to
+`ghcr.io/onesilo/onesilo-node` and creates a GitHub release whose notes
+point at it. A tag with a hyphen (`v0.2.0-rc.1`) is marked as a prerelease
+automatically.
 
-The macOS archives are **not** Developer ID signed or notarized; see
-[Which way to run it](#which-way-to-run-it). Signed distribution is Silo
-Desktop's job, and adding it here would mean putting a signing certificate
-into this repository's secrets for an audience that is already comfortable
-running `make build`.
+**The image is the release.** No archives are published — see
+[Which way to run it](#which-way-to-run-it) for why. A tag is a stable
+version you can pin, whether you pull the image or
+`go install …/cmd/onesilo-node@v0.2.0`.
 
-**Reproducible, and proven so rather than asserted.** Every target is
-built twice during the release and the build fails if the two binaries
-differ. The same double-build check covers the image — see
-`scripts/build-image.sh`.
+**The tag is gated on two checks**, both of which publish nothing and exist
+only to stop a bad release:
 
-Archives and the container image are built from identical flags *and* the
-same pinned Go toolchain, so the binary in an archive and the one inside
-the image are expected to match for a given commit. Both conditions
-matter: different Go versions emit different code, which is why
-`release.yml` pins its toolchain to the builder image in
-[`Dockerfile`](Dockerfile) rather than tracking the `go.mod` floor that CI
-uses. Note that the archive-versus-image equality is not itself asserted
-by a check — what CI proves is that each is individually reproducible.
+- **Every supported platform builds, reproducibly.** Each of
+  linux/amd64, linux/arm64, darwin/amd64 and darwin/arm64 is compiled
+  twice and the release fails if the two differ. darwin is included even
+  though no macOS artifact ships, because Silo Desktop bundles this daemon
+  for macOS — a change that breaks the Mac build should fail here, not
+  there. Run it yourself with `make verify-builds`.
+- **The binary reports the tag.** A missed ldflags path compiles cleanly
+  and passes every test, so the release extracts the version and compares
+  it to the tag exactly. This has caught real bugs twice.
 
-**Verify what you downloaded.** Releases carry build provenance
-attestation, so you can confirm an artifact came from this repository's
-release workflow at a specific commit:
+The image gets the same treatment independently: `scripts/build-image.sh`
+builds twice and fails if the image IDs diverge.
+
+**Verify what you pulled.** The image carries build provenance attestation,
+so you can confirm it came from this repository's release workflow at a
+specific commit:
 
 ```bash
-gh attestation verify onesilo-node_v0.2.0_linux_amd64.tar.gz \
+gh attestation verify oci://ghcr.io/onesilo/onesilo-node:v0.2.0 \
   --repo onesilo/onesilo-node
-sha256sum -c SHA256SUMS
 ```
 
-Build the same artifacts locally with `make release` (output in `dist/`),
-or run the workflow manually from the Actions tab for a dry run that
-builds and verifies without publishing anything.
+Run the workflow manually from the Actions tab for a dry run — it builds
+and verifies everything without publishing.
 
 ## License
 
