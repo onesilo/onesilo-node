@@ -4,7 +4,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS := -X $(PKG)/internal/version.Version=$(VERSION) -X $(PKG)/internal/version.Commit=$(COMMIT)
 
-.PHONY: build test vet fmt fmt-check lint clean release image image-verify
+.PHONY: build test vet fmt fmt-check lint clean verify-builds image image-verify
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/$(BINARY)
@@ -24,12 +24,12 @@ fmt-check:
 lint: vet fmt-check
 
 clean:
-	rm -rf bin dist
+	rm -rf bin
 
-# Cross-compile every published target into dist/, verifying each is
-# reproducible, then archive with checksums. Same script CI runs on a tag.
-release:
-	./scripts/build-release.sh
+# Build every supported platform and prove each is reproducible. Publishes
+# nothing — the same check CI runs as a gate on a release tag.
+verify-builds:
+	./scripts/verify-builds.sh
 
 # Build the Docker image (reproducible flags, single build).
 image:
