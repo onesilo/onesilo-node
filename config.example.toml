@@ -120,6 +120,13 @@ external_url = ""
 enabled = false
 port = 8765
 
+# Hard-gate automated pairing (see docs/automated-pairing.md). When true, an
+# app identity key seen for the first time is pinned but cannot run inference
+# until its short authentication string (SAS) is confirmed in the admin UI —
+# this is what catches a control plane that substituted keys. Set false to
+# trust-on-first-use without the manual comparison.
+require_pairing_verification = true
+
 [openai]
 # OpenAI-compatible inference surface: /v1/chat/completions, /v1/completions,
 # /v1/models and /v1/embeddings on lan.port (and through any configured
