@@ -335,6 +335,49 @@ minimal: `BurntSushi/toml`, `google/uuid`, `coder/websocket`,
 `libp2p/zeroconf` (Bonjour), `modernc.org/sqlite` (CGO-free), and the
 standard library.
 
+## Releases
+
+Pushing a `v*` tag builds and publishes everything; there is no manual
+step.
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+That produces a GitHub release with `tar.gz` archives for **macOS and
+Linux on amd64 and arm64**, each containing the binary, the licence and
+this README, plus a `SHA256SUMS` file — and pushes a multi-architecture
+image to `ghcr.io/onesilo/onesilo-node`. A tag with a hyphen
+(`v0.2.0-rc.1`) is marked as a prerelease automatically.
+
+**Reproducible, and proven so rather than asserted.** Every target is
+built twice during the release and the build fails if the two binaries
+differ. The same double-build check covers the image — see
+`scripts/build-image.sh`.
+
+Archives and the container image are built from identical flags *and* the
+same pinned Go toolchain, so the binary in an archive and the one inside
+the image are expected to match for a given commit. Both conditions
+matter: different Go versions emit different code, which is why
+`release.yml` pins its toolchain to the builder image in
+[`Dockerfile`](Dockerfile) rather than tracking the `go.mod` floor that CI
+uses. Note that the archive-versus-image equality is not itself asserted
+by a check — what CI proves is that each is individually reproducible.
+
+**Verify what you downloaded.** Releases carry build provenance
+attestation, so you can confirm an artifact came from this repository's
+release workflow at a specific commit:
+
+```bash
+gh attestation verify onesilo-node_v0.2.0_linux_amd64.tar.gz \
+  --repo onesilo/onesilo-node
+sha256sum -c SHA256SUMS
+```
+
+Build the same artifacts locally with `make release` (output in `dist/`),
+or run the workflow manually from the Actions tab for a dry run that
+builds and verifies without publishing anything.
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
