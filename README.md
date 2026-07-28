@@ -73,13 +73,14 @@ for you and there is nothing to run in a terminal. That is the supported
 path for anyone who just wants a node.
 
 **This repository is for running it yourself**, and assumes you are
-comfortable on a command line. Three ways, all equivalent:
+comfortable on a command line. Three ways — they produce the same node, so
+pick by where it is running:
 
-| | |
-|---|---|
-| **Docker** | A reproducible distroless image and a compose file with an Ollama sidecar — see [docs/deploy-docker.md](docs/deploy-docker.md). The best option for a NAS or home server. |
-| **From source** | `make build`, below. Needs Go 1.25+. |
-| **`go install`** | `go install github.com/onesilo/onesilo-node/cmd/onesilo-node@latest` |
+| Method | Best for | What it takes |
+|---|---|---|
+| **Docker** | a NAS, a home server, anything long-running | A reproducible distroless image and a compose file with an Ollama sidecar — see [docs/deploy-docker.md](docs/deploy-docker.md). |
+| **From source** | hacking on it, or a machine you already develop on | `make build` (see [Quickstart](#quickstart)). Needs Go 1.25+. |
+| **`go install`** | the quickest start if you already have Go | `go install github.com/onesilo/onesilo-node/cmd/onesilo-node@latest` |
 
 Tagged releases also carry prebuilt archives for macOS and Linux on amd64
 and arm64 — see [Releases](#releases). **Those binaries are not signed with
