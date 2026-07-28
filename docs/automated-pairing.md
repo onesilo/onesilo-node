@@ -1,6 +1,7 @@
 # Automated pairing (remote E2E without QR)
 
-**Status:** implemented on the node · **Scope:** onesilo-node + onesilo-backend (+ onesilo-apple)
+**Status:** implemented on the node · **Scope (repositories):** `onesilo-node` +
+`onesilo-backend` + `onesilo-apple`
 
 > The node side of this design ships: the handshake and key schedule live in
 > `internal/pairing` (`crypto.go`, `handshake.go`, `identity.go`), assertion
