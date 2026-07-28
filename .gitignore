@@ -1,5 +1,5 @@
 /bin/
-/silo-node
+/onesilo-node
 *.test
 *.out
 .DS_Store

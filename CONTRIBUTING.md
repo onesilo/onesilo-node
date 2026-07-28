@@ -1,4 +1,4 @@
-# Contributing to silo-node
+# Contributing to onesilo-node
 
 Thanks for helping build the Silo node. This document covers the codebase
 layout, the rules that keep it safe, and how to get a change merged.
@@ -18,7 +18,7 @@ everything runs against `httptest` fakes.
 ## Layout
 
 ```
-cmd/silo-node/        entrypoint + `healthcheck` subcommand
+cmd/onesilo-node/        entrypoint + `healthcheck` subcommand
 internal/config/      typed config, precedence loader (flags > env > TOML > defaults)
 internal/logging/     slog setup
 internal/node/        lifecycle reconciler + the Capability interface

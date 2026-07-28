@@ -2,7 +2,7 @@
 
 ## Our pledge
 
-We want silo-node to be a project where people are judged on their work and
+We want onesilo-node to be a project where people are judged on their work and
 treated decently while they do it. Everyone participating — issues, pull
 requests, discussions, reviews — is expected to help keep it that way,
 regardless of their experience level, background, or identity.

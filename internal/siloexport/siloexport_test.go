@@ -85,7 +85,7 @@ func TestWriteRoundTrip(t *testing.T) {
 		}
 	}
 	cr, _ := man["creator"].(map[string]any)
-	if cr["name"] != "shawns-mac" || cr["uri"] != "silo-node:personal" {
+	if cr["name"] != "shawns-mac" || cr["uri"] != "onesilo-node:personal" {
 		t.Errorf("creator = %v", cr)
 	}
 	st, _ := man["stats"].(map[string]any)

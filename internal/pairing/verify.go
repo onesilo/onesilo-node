@@ -16,7 +16,7 @@ import (
 )
 
 // PairingAudience is the `aud` claim a node requires in a pairing assertion.
-const PairingAudience = "silo-node-pairing"
+const PairingAudience = "onesilo-node-pairing"
 
 // clockSkew tolerates small clock differences on exp/iat checks.
 const clockSkew = 30 * time.Second

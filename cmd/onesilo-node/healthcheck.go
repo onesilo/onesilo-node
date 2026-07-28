@@ -8,16 +8,16 @@ import (
 	"time"
 )
 
-// runHealthcheck implements `silo-node healthcheck`: probe the local admin
+// runHealthcheck implements `onesilo-node healthcheck`: probe the local admin
 // API's /healthz and exit 0 (healthy) or 1. Intended for Docker:
 //
-//	HEALTHCHECK CMD ["/silo-node", "healthcheck"]
+//	HEALTHCHECK CMD ["/onesilo-node", "healthcheck"]
 //
 // The admin port is resolved with the same precedence as the main command
 // (flags > env > config file > default), so a container that overrides
-// SILO_NODE_ADMIN_PORT health-checks the right port automatically.
+// ONESILO_NODE_ADMIN_PORT health-checks the right port automatically.
 func runHealthcheck(args []string) int {
-	fs := flag.NewFlagSet("silo-node healthcheck", flag.ExitOnError)
+	fs := flag.NewFlagSet("onesilo-node healthcheck", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to TOML config file")
 	fs.String("admin-port", "", "admin API port to probe")
 	if err := fs.Parse(args); err != nil {

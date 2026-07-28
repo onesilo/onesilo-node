@@ -129,7 +129,7 @@ var pairingKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Liveness probe: no auth, used by `silo-node healthcheck` and Docker.
+	// Liveness probe: no auth, used by `onesilo-node healthcheck` and Docker.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
