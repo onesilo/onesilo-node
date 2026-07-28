@@ -1,5 +1,5 @@
-BINARY  := silo-node
-PKG     := github.com/onesilo/silo-node
+BINARY  := onesilo-node
+PKG     := github.com/onesilo/onesilo-node
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS := -X $(PKG)/internal/version.Version=$(VERSION) -X $(PKG)/internal/version.Commit=$(COMMIT)

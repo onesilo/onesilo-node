@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // bonjourRefreshInterval is how often the announcer re-checks the current

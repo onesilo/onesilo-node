@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onesilo/silo-node/internal/adminapi"
+	"github.com/onesilo/onesilo-node/internal/adminapi"
 )
 
 // adminTokenFile is the admin API token's location inside data_dir. Written
-// by `silo-node setup` and loaded automatically at start when
+// by `onesilo-node setup` and loaded automatically at start when
 // SILO_NODE_ADMIN_TOKEN is unset.
 const adminTokenFile = "admin.token"
 

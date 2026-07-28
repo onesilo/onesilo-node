@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/fsutil"
+	"github.com/onesilo/onesilo-node/internal/fsutil"
 )
 
 // pinFile stores the trust-on-first-use record of app identity keys this

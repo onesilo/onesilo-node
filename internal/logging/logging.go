@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // New returns a logger writing to stderr in the configured format and level.

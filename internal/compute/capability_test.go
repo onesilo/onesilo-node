@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/onesilo/silo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/compute/ollama"
 )
 
 func tagsServer(t *testing.T, names ...string) *httptest.Server {

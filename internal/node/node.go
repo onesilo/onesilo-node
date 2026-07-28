@@ -1,4 +1,4 @@
-// Package node owns the silo-node lifecycle: a single reconciler that
+// Package node owns the onesilo-node lifecycle: a single reconciler that
 // starts/stops capability goroutines, the quick tunnel, and control-plane
 // registration to match the live configuration. The admin API drives it.
 package node
@@ -18,17 +18,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/adminapi"
-	"github.com/onesilo/silo-node/internal/compute"
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/controlplane"
-	"github.com/onesilo/silo-node/internal/gateway"
-	"github.com/onesilo/silo-node/internal/lanserve"
-	"github.com/onesilo/silo-node/internal/memory"
-	"github.com/onesilo/silo-node/internal/openaiapi"
-	"github.com/onesilo/silo-node/internal/pairing"
-	"github.com/onesilo/silo-node/internal/tunnel"
-	"github.com/onesilo/silo-node/internal/version"
+	"github.com/onesilo/onesilo-node/internal/adminapi"
+	"github.com/onesilo/onesilo-node/internal/compute"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
+	"github.com/onesilo/onesilo-node/internal/gateway"
+	"github.com/onesilo/onesilo-node/internal/lanserve"
+	"github.com/onesilo/onesilo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/openaiapi"
+	"github.com/onesilo/onesilo-node/internal/pairing"
+	"github.com/onesilo/onesilo-node/internal/tunnel"
+	"github.com/onesilo/onesilo-node/internal/version"
 )
 
 // reconcileInterval doubles as the retry cadence for capabilities that
@@ -37,7 +37,7 @@ const reconcileInterval = 30 * time.Second
 
 var pairingKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 
-// Node is the running silo-node instance.
+// Node is the running onesilo-node instance.
 type Node struct {
 	logger     *slog.Logger
 	configPath string
@@ -239,7 +239,7 @@ func (n *Node) deviceName() string {
 	if host, err := os.Hostname(); err == nil {
 		return host
 	}
-	return "silo-node"
+	return "onesilo-node"
 }
 
 func (n *Node) capabilityProbes() []controlplane.CapabilityProbe {
@@ -272,7 +272,7 @@ func (n *Node) Run(ctx context.Context) error {
 		n.regMgr.Run(runCtx)
 	}()
 
-	n.logger.Info("silo-node started",
+	n.logger.Info("onesilo-node started",
 		"version", version.Version, "commit", version.Commit,
 		"admin_port", n.snapshot().Admin.Port,
 		"admin_ui", fmt.Sprintf("http://127.0.0.1:%d/", n.snapshot().Admin.Port))

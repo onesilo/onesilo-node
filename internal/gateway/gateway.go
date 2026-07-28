@@ -23,10 +23,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/controlplane"
-	"github.com/onesilo/silo-node/internal/memory"
-	"github.com/onesilo/silo-node/internal/version"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
+	"github.com/onesilo/onesilo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/version"
 )
 
 // RoutePrefix is where the relay mounts on the LAN server.
@@ -37,7 +37,7 @@ const probeTimeout = 3 * time.Second
 
 // noCredentialsHint names every supported credential path, so a user who
 // chose OAuth during setup isn't steered toward an API key by mistake.
-const noCredentialsHint = "sign in with `silo-node setup`, set " +
+const noCredentialsHint = "sign in with `onesilo-node setup`, set " +
 	controlplane.APIKeyEnvVar + ", or push a JWT"
 
 // Capability implements node.Capability for the control-plane relay.

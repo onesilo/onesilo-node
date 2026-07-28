@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/controlplane"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
 )
 
 // signInTimeout bounds how long setup waits for the browser approval. It

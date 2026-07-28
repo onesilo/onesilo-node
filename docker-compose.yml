@@ -1,14 +1,14 @@
-# silo-node + Ollama sidecar.
+# onesilo-node + Ollama sidecar.
 #
 #   export SILO_API_KEY=sc_...     # see docs/deploy-docker.md ("Attach to your Silo account")
 #   docker compose up -d
 #
 # Env var names come from the settings table in internal/config/load.go
-# (`silo-node -h` lists all of them).
+# (`onesilo-node -h` lists all of them).
 services:
-  silo-node:
+  onesilo-node:
     build: .
-    image: silo-node:local
+    image: onesilo-node:local
     restart: unless-stopped
     environment:
       # sc_ API key from your Silo account (required; passed through from host).

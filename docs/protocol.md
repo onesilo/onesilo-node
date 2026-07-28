@@ -1,6 +1,6 @@
 # LAN serving protocol
 
-The wire protocol the Silo iOS app speaks to a silo-node (or a SiloMac /
+The wire protocol the Silo iOS app speaks to a onesilo-node (or a SiloMac /
 SiloDesktop install — the format is identical) on the local network. The Go
 implementation lives in `internal/lanserve/` and is a port of the SiloMac
 prototype (`SiloMac/Serving/*.swift`); the JSON shapes are defined by
@@ -19,7 +19,7 @@ true:
   | `model` | current Ollama model tag (e.g. `llama3.2:3b`) | the only key iOS parses; re-announced when the model changes |
   | `version` | `1.0` | legacy, matches SiloMac |
   | `capabilities` | `chat,stream,e2e` | legacy, matches SiloMac |
-  | `protocol` | `1` | additive, silo-node only |
+  | `protocol` | `1` | additive, onesilo-node only |
 
 A node with only the memory capability enabled runs the same HTTP server
 but does **not** publish Bonjour (there is no LLM to discover).
@@ -161,7 +161,7 @@ lenience/text differ):
   clients switch on `code`, not text.
 - `user_message` decoding is lenient: SiloMac fails when the non-optional
   `use_openrouter` field is missing and replies with a generic routing
-  error; silo-node ignores missing optional fields (iOS always sends it).
+  error; onesilo-node ignores missing optional fields (iOS always sends it).
 - SiloMac tracks a new generation per `user_message` without cancelling the
-  previous one; silo-node behaves the same (the tracked cancel handle is
+  previous one; onesilo-node behaves the same (the tracked cancel handle is
   replaced), and `interrupt`/`stop` cancel the most recent generation.

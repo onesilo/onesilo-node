@@ -1,4 +1,4 @@
-// Command silo-node runs an open-source Silo node: it contributes Memory
+// Command onesilo-node runs an open-source Silo node: it contributes Memory
 // and Compute capabilities to the Silo control plane, driven locally over a
 // localhost admin API (used by the Silo Desktop app) or a TOML config file
 // (Docker / headless).
@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/onesilo/silo-node/internal/adminapi"
-	"github.com/onesilo/silo-node/internal/config"
-	"github.com/onesilo/silo-node/internal/logging"
-	"github.com/onesilo/silo-node/internal/node"
-	"github.com/onesilo/silo-node/internal/version"
+	"github.com/onesilo/onesilo-node/internal/adminapi"
+	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/logging"
+	"github.com/onesilo/onesilo-node/internal/node"
+	"github.com/onesilo/onesilo-node/internal/version"
 )
 
 func main() {
@@ -33,8 +33,8 @@ func main() {
 }
 
 func run(args []string) int {
-	fs := flag.NewFlagSet("silo-node", flag.ExitOnError)
-	configPath := fs.String("config", "", "path to TOML config file (default ~/.silo-node/config.toml)")
+	fs := flag.NewFlagSet("onesilo-node", flag.ExitOnError)
+	configPath := fs.String("config", "", "path to TOML config file (default ~/.onesilo-node/config.toml)")
 	showVersion := fs.Bool("version", false, "print version and exit")
 	registerConfigFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -42,20 +42,20 @@ func run(args []string) int {
 	}
 
 	if *showVersion {
-		fmt.Printf("silo-node %s (%s)\n", version.Version, version.Commit)
+		fmt.Printf("onesilo-node %s (%s)\n", version.Version, version.Commit)
 		return 0
 	}
 
 	cfg, path, err := loadConfig(fs, *configPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "silo-node: "+err.Error())
+		fmt.Fprintln(os.Stderr, "onesilo-node: "+err.Error())
 		return 1
 	}
 
 	logger := logging.New(cfg.Log)
 
 	// Admin token: SILO_NODE_ADMIN_TOKEN wins; otherwise the token file
-	// written by `silo-node setup` is loaded.
+	// written by `onesilo-node setup` is loaded.
 	dataDir, dirErr := cfg.ResolvedDataDir()
 	if dirErr != nil {
 		dataDir = ""
@@ -63,7 +63,7 @@ func run(args []string) int {
 	adminToken, tokenSource := resolveAdminToken(dataDir, os.LookupEnv)
 	switch tokenSource {
 	case "":
-		logger.Warn("no admin token (" + adminapi.AdminTokenEnvVar + " unset, no " + adminTokenFile + " in data dir); admin API refuses all authenticated requests — run `silo-node setup`")
+		logger.Warn("no admin token (" + adminapi.AdminTokenEnvVar + " unset, no " + adminTokenFile + " in data dir); admin API refuses all authenticated requests — run `onesilo-node setup`")
 	case "file":
 		logger.Info("admin token loaded", "path", filepath.Join(dataDir, adminTokenFile))
 	}

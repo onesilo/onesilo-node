@@ -1,4 +1,4 @@
-# Contributing to silo-node
+# Contributing to onesilo-node
 
 Thanks for helping build the Silo node. This document covers the codebase
 layout, the rules that keep it safe, and how to get a change merged.
@@ -6,18 +6,19 @@ layout, the rules that keep it safe, and how to get a change merged.
 ## Getting started
 
 ```bash
-git clone https://github.com/onesilo/silo-node
-cd silo-node
+git clone https://github.com/onesilo/onesilo-node
+cd onesilo-node
 make build && make test && make lint
 ```
 
-Go 1.24 or newer. No external services are needed for the test suite —
+Go 1.25 or newer (`go.mod` sets the floor). No external services are
+needed for the test suite —
 everything runs against `httptest` fakes.
 
 ## Layout
 
 ```
-cmd/silo-node/        entrypoint + `healthcheck` subcommand
+cmd/onesilo-node/        entrypoint + `healthcheck` subcommand
 internal/config/      typed config, precedence loader (flags > env > TOML > defaults)
 internal/logging/     slog setup
 internal/node/        lifecycle reconciler + the Capability interface

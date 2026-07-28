@@ -1,9 +1,9 @@
-# silo-node example configuration
+# onesilo-node example configuration
 #
-# Copy to ~/.silo-node/config.toml (or pass -config /path/to/config.toml).
+# Copy to ~/.onesilo-node/config.toml (or pass -config /path/to/config.toml).
 # Every key can also be set by environment variable or CLI flag; precedence
 # is: flags > SILO_NODE_* env > this file > built-in defaults.
-# Run `silo-node -h` for the full flag/env list.
+# Run `onesilo-node -h` for the full flag/env list.
 
 # What this node is:
 #   "local"   - self-contained: local memory and local LLM only. The node
@@ -20,7 +20,7 @@ mode = "local"
 # Directory for node state: device_id, pairing.key, and the persisted config
 # when it is updated through the admin API. "~" is expanded.
 # env: SILO_NODE_DATA_DIR
-data_dir = "~/.silo-node"
+data_dir = "~/.onesilo-node"
 
 [log]
 # Output format: "text" (human-friendly) or "json" (log shippers).
@@ -55,7 +55,7 @@ url = "https://api.onesilo.com"
 #               desktop deployment.
 #   "api_key" - an sc_ API key read from the SILO_API_KEY environment
 #               variable. Use this for Docker / headless deployments.
-#   "oauth"   - the credential stored by the `silo-node setup` sign-in step
+#   "oauth"   - the credential stored by the `onesilo-node setup` sign-in step
 #               (<data_dir>/oauth.json): the node holds its own OAuth grant
 #               — like the Silo iOS app — refreshes tokens automatically,
 #               and appears as a revocable connection in your dashboard.
@@ -74,7 +74,7 @@ embed_model = "nomic-embed-text"
 # Base URL of the Ollama server the compute capability uses.
 host = "http://127.0.0.1:11434"
 
-# When true and no server answers at `host`, silo-node spawns `ollama serve`
+# When true and no server answers at `host`, onesilo-node spawns `ollama serve`
 # itself (searching binary_path, $PATH, /opt/homebrew/bin, /usr/local/bin)
 # and stops it again when the capability stops. When false, an unreachable
 # server is reported as unhealthy instead.
@@ -119,6 +119,13 @@ external_url = ""
 # The quick tunnel targets this port as well.
 enabled = false
 port = 8765
+
+# Hard-gate automated pairing (see docs/automated-pairing.md). When true, an
+# app identity key seen for the first time is pinned but cannot run inference
+# until its short authentication string (SAS) is confirmed in the admin UI —
+# this is what catches a control plane that substituted keys. Set false to
+# trust-on-first-use without the manual comparison.
+require_pairing_verification = true
 
 [openai]
 # OpenAI-compatible inference surface: /v1/chat/completions, /v1/completions,

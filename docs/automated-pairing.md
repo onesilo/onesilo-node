@@ -1,6 +1,17 @@
 # Automated pairing (remote E2E without QR)
 
-**Status:** proposal · **Scope:** onesilo-node + onesilo-backend (+ onesilo-apple)
+**Status:** implemented on the node · **Scope (repositories):** `onesilo-node` +
+`onesilo-backend` + `onesilo-apple`
+
+> The node side of this design ships: the handshake and key schedule live in
+> `internal/pairing` (`crypto.go`, `handshake.go`, `identity.go`), assertion
+> verification in `verify.go`/`jwks.go`, TOFU pinning in `pinstore.go`, and
+> the serving-path wiring in `internal/lanserve/pairing.go`. The pairer is
+> constructed unconditionally in `internal/node`. First-contact sessions are
+> gated by `lan.require_pairing_verification` (default true), which withholds
+> inference until the short authentication string is confirmed in the admin
+> UI. The QR + `pairing.key` path still works as a fallback. Client and
+> control-plane support are tracked in their own repositories.
 
 ## Problem
 
@@ -13,7 +24,7 @@ generates or scans anything.
 
 Two gaps follow:
 
-1. **Headless nodes can't pair.** A standalone `silo-node` (no Silo Desktop
+1. **Headless nodes can't pair.** A standalone `onesilo-node` (no Silo Desktop
    driving it) has no way to establish a pairing key with an app. An
    operator would have to hand-generate 64 hex, `curl` it into the admin
    API, and separately get the same value into the app. There is no QR

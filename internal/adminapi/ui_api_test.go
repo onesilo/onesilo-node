@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // fakeUIController layers UIController onto fakeController.
@@ -261,8 +261,8 @@ func TestAdminUIServed(t *testing.T) {
 		t.Fatalf("GET / = %d", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if !bytes.Contains(body, []byte("silo-node")) {
-		t.Error("index.html does not mention silo-node")
+	if !bytes.Contains(body, []byte("onesilo-node")) {
+		t.Error("index.html does not mention onesilo-node")
 	}
 }
 

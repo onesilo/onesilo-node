@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproducible Docker image build for silo-node.
+# Reproducible Docker image build for onesilo-node.
 #
 # Wires SOURCE_DATE_EPOCH (commit timestamp) and BuildKit's
 # rewrite-timestamp exporter option so that building the same commit twice
@@ -10,7 +10,7 @@
 #   scripts/build-image.sh            # build twice, assert identical image IDs
 #   scripts/build-image.sh --single   # one build, print digest (no verification)
 #
-# Env overrides: IMAGE (default silo-node), VERSION, COMMIT, SOURCE_DATE_EPOCH.
+# Env overrides: IMAGE (default onesilo-node), VERSION, COMMIT, SOURCE_DATE_EPOCH.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,7 +19,7 @@ cd "${REPO_ROOT}"
 MODE=verify
 [[ "${1:-}" == "--single" ]] && MODE=single
 
-IMAGE="${IMAGE:-silo-node}"
+IMAGE="${IMAGE:-onesilo-node}"
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo none)}"
 # Commit timestamp: the canonical reproducible-build clock.
@@ -54,10 +54,10 @@ build() {
 image_id() { docker image inspect --format '{{.Id}}' "$1"; }
 
 binary_sha256() {
-    # Extract /silo-node from the (distroless, shell-less) image and hash it.
+    # Extract /onesilo-node from the (distroless, shell-less) image and hash it.
     local cid
     cid="$(docker create "$1")"
-    docker cp "${cid}:/silo-node" - 2>/dev/null | tar -xO silo-node | shasum -a 256 | cut -d' ' -f1
+    docker cp "${cid}:/onesilo-node" - 2>/dev/null | tar -xO onesilo-node | shasum -a 256 | cut -d' ' -f1
     docker rm -f "${cid}" >/dev/null
 }
 
@@ -87,7 +87,7 @@ echo "binary sha (1st): ${BIN1}"
 echo "binary sha (2nd): ${BIN2}"
 
 if [[ "${BIN1}" != "${BIN2}" ]]; then
-    fail "silo-node binary is NOT reproducible: ${BIN1} != ${BIN2}"
+    fail "onesilo-node binary is NOT reproducible: ${BIN1} != ${BIN2}"
 fi
 if [[ "${ID1}" != "${ID2}" ]]; then
     fail "image IDs differ across builds (binary was identical, so a layer timestamp or metadata leaked): ${ID1} != ${ID2}"

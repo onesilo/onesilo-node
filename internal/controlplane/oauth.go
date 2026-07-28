@@ -14,12 +14,12 @@ import (
 )
 
 // OAuthCredentialFile is where the sign-in credential lives under data_dir.
-// Written (0600) by the `silo-node setup` sign-in step; consumed by
+// Written (0600) by the `onesilo-node setup` sign-in step; consumed by
 // OAuthTokenSource when control_plane.auth_mode is "oauth".
 const OAuthCredentialFile = "oauth.json"
 
 // ErrNotSignedIn means auth_mode is "oauth" but no credential is stored.
-var ErrNotSignedIn = errors.New("not signed in to One Silo — run `silo-node setup` to sign in")
+var ErrNotSignedIn = errors.New("not signed in to One Silo — run `onesilo-node setup` to sign in")
 
 // OAuthCredential is the persisted result of the setup sign-in: the node's
 // own OAuth grant against the control plane, refresh_token included. It is

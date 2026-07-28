@@ -16,7 +16,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/memory"
 )
 
 // specVersion is the .silo format version this writer emits.
@@ -100,7 +100,7 @@ func Write(w io.Writer, siloID, deviceName string, items []memory.Item, now time
 		// The node has no cloud config for the silo; augmented is the
 		// format's default posture (silo primary, context may fill gaps).
 		Mode:    "augmented",
-		Creator: creator{Name: deviceName, URI: "silo-node:" + siloID},
+		Creator: creator{Name: deviceName, URI: "onesilo-node:" + siloID},
 		Tags:    []string{},
 		Stats:   stats{MemoryCount: len(items)},
 	}

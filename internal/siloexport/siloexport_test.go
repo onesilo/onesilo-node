@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onesilo/silo-node/internal/memory"
+	"github.com/onesilo/onesilo-node/internal/memory"
 )
 
 func readEntry(t *testing.T, zr *zip.Reader, name string) []byte {
@@ -85,7 +85,7 @@ func TestWriteRoundTrip(t *testing.T) {
 		}
 	}
 	cr, _ := man["creator"].(map[string]any)
-	if cr["name"] != "shawns-mac" || cr["uri"] != "silo-node:personal" {
+	if cr["name"] != "shawns-mac" || cr["uri"] != "onesilo-node:personal" {
 		t.Errorf("creator = %v", cr)
 	}
 	st, _ := man["stats"].(map[string]any)

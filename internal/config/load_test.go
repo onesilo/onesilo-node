@@ -14,7 +14,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.DataDir != "~/.silo-node" {
+	if cfg.DataDir != "~/.onesilo-node" {
 		t.Errorf("DataDir = %q", cfg.DataDir)
 	}
 	if cfg.ControlPlane.URL != "https://api.onesilo.com" {
@@ -48,7 +48,7 @@ func writeFile(t *testing.T, content string) string {
 
 func TestLoadFileOverridesDefaults(t *testing.T) {
 	path := writeFile(t, `
-data_dir = "/var/lib/silo-node"
+data_dir = "/var/lib/onesilo-node"
 
 [capabilities]
 compute = true
@@ -63,7 +63,7 @@ port = 9000
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.DataDir != "/var/lib/silo-node" {
+	if cfg.DataDir != "/var/lib/onesilo-node" {
 		t.Errorf("DataDir = %q", cfg.DataDir)
 	}
 	if !cfg.Capabilities.Compute {
@@ -197,11 +197,11 @@ func TestExpandTilde(t *testing.T) {
 	if err != nil {
 		t.Skip("no home dir")
 	}
-	got, err := ExpandTilde("~/.silo-node")
+	got, err := ExpandTilde("~/.onesilo-node")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != filepath.Join(home, ".silo-node") {
+	if got != filepath.Join(home, ".onesilo-node") {
 		t.Errorf("ExpandTilde = %q", got)
 	}
 	got, err = ExpandTilde("/absolute/path")

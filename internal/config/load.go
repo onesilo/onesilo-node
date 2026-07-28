@@ -101,13 +101,13 @@ type LoadOptions struct {
 }
 
 // DefaultPath returns the default config file location
-// (~/.silo-node/config.toml).
+// (~/.onesilo-node/config.toml).
 func DefaultPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "config.toml"
 	}
-	return filepath.Join(home, ".silo-node", "config.toml")
+	return filepath.Join(home, ".onesilo-node", "config.toml")
 }
 
 // Load builds a Config with precedence: flags > env > TOML file > defaults.

@@ -1,7 +1,7 @@
 // Package version carries build-time identity injected via -ldflags:
 //
-//	go build -ldflags "-X github.com/onesilo/silo-node/internal/version.Version=v0.1.0 \
-//	                   -X github.com/onesilo/silo-node/internal/version.Commit=abc1234"
+//	go build -ldflags "-X github.com/onesilo/onesilo-node/internal/version.Version=v0.1.0 \
+//	                   -X github.com/onesilo/onesilo-node/internal/version.Commit=abc1234"
 package version
 
 var (
@@ -13,5 +13,5 @@ var (
 
 // UserAgent returns the User-Agent string used for control-plane requests.
 func UserAgent() string {
-	return "silo-node/" + Version
+	return "onesilo-node/" + Version
 }

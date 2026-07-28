@@ -1,0 +1,98 @@
+name: Bug report
+description: Something behaves differently than documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste secrets. `onesilo-node -h` output, config files, and
+        logs can contain the admin token, node key, tunnel hostname, or
+        control-plane credentials — redact before posting.
+
+        Found a security vulnerability? Do not file here. Email
+        security@onesilo.com.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. onesilo-node setup -yes
+        2. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `onesilo-node -version`, or the commit you built.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it running
+      options:
+        - Standalone binary
+        - Docker / docker-compose
+        - Bundled in Silo Desktop
+        - Built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - local
+        - gateway
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: capabilities
+    attributes:
+      label: Capabilities enabled
+      options:
+        - label: compute
+        - label: memory
+        - label: lan
+        - label: openai
+
+  - type: dropdown
+    id: tunnel
+    attributes:
+      label: Remote access (tunnel.mode)
+      options:
+        - "off"
+        - quick
+        - managed
+        - external
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: macOS 26.1 arm64 / Ubuntu 24.04 amd64
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact tokens and hostnames. `log.level = "debug"` helps.
+      render: text

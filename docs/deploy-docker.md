@@ -1,9 +1,9 @@
-# Deploying silo-node with Docker
+# Deploying onesilo-node with Docker
 
 The repo ships a reproducible, distroless Docker image and a
 `docker-compose.yml` that pairs the node with an [Ollama](https://ollama.com)
 sidecar for the compute capability. All configuration is environment-driven —
-every `SILO_NODE_*` variable maps 1:1 to a config key (`silo-node -h` lists
+every `SILO_NODE_*` variable maps 1:1 to a config key (`onesilo-node -h` lists
 them; the table lives in `internal/config/load.go`).
 
 ## Quickstart
@@ -11,8 +11,8 @@ them; the table lives in `internal/config/load.go`).
 ```bash
 export SILO_API_KEY=sc_...          # see "Attach to your Silo account" below
 docker compose up -d
-docker compose ps                    # wait for silo-node to report (healthy)
-docker compose logs -f silo-node
+docker compose ps                    # wait for onesilo-node to report (healthy)
+docker compose logs -f onesilo-node
 ```
 
 On first start the node generates its identity under the `silo-data` volume,
@@ -78,8 +78,8 @@ restart (the node re-registers automatically).
 **Named tunnel (stable hostname)** — run cloudflared yourself and tell the
 node its public URL:
 
-1. Create a named tunnel: `cloudflared tunnel create silo-node`, route it to
-   the container (`ingress` → `http://silo-node:8765`), and note the tunnel
+1. Create a named tunnel: `cloudflared tunnel create onesilo-node`, route it to
+   the container (`ingress` → `http://onesilo-node:8765`), and note the tunnel
    UUID.
 2. Run `cloudflare/cloudflared` as another compose service with
    `tunnel run --token ...`, attached to the same network.
@@ -101,7 +101,7 @@ URL to the control plane.
 
 The admin API binds `127.0.0.1:8766` **inside the container**
 (`internal/adminapi/server.go`) and cannot be published with `ports:` — this
-is deliberate. Docker's `HEALTHCHECK` runs `/silo-node healthcheck` inside
+is deliberate. Docker's `HEALTHCHECK` runs `/onesilo-node healthcheck` inside
 the container network namespace, so health status still works.
 
 The image is distroless (no shell, no curl), so you cannot `docker exec` into
@@ -111,7 +111,7 @@ it. Operate the node through environment variables: change the env, then
 debug sidecar sharing the network namespace:
 
 ```bash
-docker run --rm --network container:<silo-node-container> curlimages/curl \
+docker run --rm --network container:<onesilo-node-container> curlimages/curl \
   -H "Authorization: Bearer $SILO_NODE_ADMIN_TOKEN" \
   http://127.0.0.1:8766/v1/status
 ```
@@ -134,7 +134,7 @@ live in the separate `ollama-models` volume and are re-pullable.
 
 ```bash
 git pull
-docker compose build silo-node
+docker compose build onesilo-node
 docker compose up -d
 ```
 
@@ -166,7 +166,7 @@ make image-verify      # = scripts/build-image.sh
 ```
 
 This builds the image twice — the second time with `--no-cache` — and fails
-unless both the embedded `/silo-node` binary SHA-256 **and** the full image
+unless both the embedded `/onesilo-node` binary SHA-256 **and** the full image
 IDs are identical. To audit a published image, run the script at the release
 tag and compare the printed image ID and binary SHA-256 against the release
 notes.

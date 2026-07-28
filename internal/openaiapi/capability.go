@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/onesilo/silo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/config"
 )
 
 // Routes are the OpenAI-compatible paths the capability serves. Exact
@@ -90,9 +90,9 @@ func (c *Capability) Handler() http.Handler {
 
 		presented, ok := bearerToken(r)
 		if !ok || !c.keys.Verify(presented) {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="silo-node"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="onesilo-node"`)
 			writeOpenAIError(w, http.StatusUnauthorized,
-				"invalid or missing API key; mint one with `silo-node` admin API or the desktop app")
+				"invalid or missing API key; mint one with `onesilo-node` admin API or the desktop app")
 			return
 		}
 
