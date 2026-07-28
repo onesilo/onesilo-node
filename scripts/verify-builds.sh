@@ -59,9 +59,21 @@ command -v go >/dev/null || fail "go not found"
 
 # -trimpath strips local paths, -buildid= clears the non-deterministic build
 # id, -s -w drop symbol and DWARF tables. Identical to Dockerfile.
+#
+# The optional 4th argument overrides GOCACHE. The verification pass uses it
+# to build into a cache that has never seen this target, so the second build
+# genuinely recompiles instead of replaying the first build's cached objects
+# — the equivalent of build-image.sh's --no-cache second pass. GOMODCACHE is
+# deliberately left shared: module downloads are inputs, not compiler output,
+# and re-fetching them would only add network flakiness.
 build_one() {
-    local goos="$1" goarch="$2" out="$3"
-    CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+    local goos="$1" goarch="$2" out="$3" cache="${4:-}"
+    # Built as an array and handed to `env`: a variable-assignment prefix has
+    # to be literal at parse time, so ${cache:+GOCACHE=...} would be parsed as
+    # a command name rather than an assignment.
+    local -a vars=(CGO_ENABLED=0 "GOOS=${goos}" "GOARCH=${goarch}")
+    [[ -n "${cache}" ]] && vars+=("GOCACHE=${cache}")
+    env "${vars[@]}" \
         go build -trimpath \
             -ldflags "-s -w -buildid= \
                 -X ${PKG}/internal/version.Version=${VERSION} \
@@ -77,7 +89,16 @@ sha256_of() {
 work="$(mktemp -d)"
 trap 'rm -rf -- "${work}"' EXIT
 
+# A build cache that starts empty, used only for verification builds. It is
+# shared across targets, which is still cold per target: Go keys cached
+# objects by GOOS/GOARCH, so one target's entries never satisfy another's.
+cold_cache="${work}/gocache"
+
 echo "==> onesilo-node ${VERSION} (commit ${COMMIT})"
+if (( VERIFY )); then
+    echo "    verification builds use a cold GOCACHE, so each target is"
+    echo "    genuinely recompiled rather than replayed from cache"
+fi
 echo
 
 for target in "${TARGETS[@]}"; do
@@ -88,7 +109,7 @@ for target in "${TARGETS[@]}"; do
     sum="$(sha256_of "${work}/${BINARY}")"
 
     if (( VERIFY )); then
-        build_one "${goos}" "${goarch}" "${work}/${BINARY}.2"
+        build_one "${goos}" "${goarch}" "${work}/${BINARY}.2" "${cold_cache}"
         sum2="$(sha256_of "${work}/${BINARY}.2")"
         [[ "${sum}" == "${sum2}" ]] || \
             fail "${target} is NOT reproducible: ${sum} != ${sum2}"
