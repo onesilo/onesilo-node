@@ -1,8 +1,8 @@
-// Package adminapi is the localhost-only control surface for silo-node.
+// Package adminapi is the localhost-only control surface for onesilo-node.
 // The Silo Desktop app (or an operator's curl) drives the node through it:
 // status, live config updates, auth token pushes, shutdown. It binds
 // 127.0.0.1 exclusively and authenticates every request (except /healthz)
-// against SILO_NODE_ADMIN_TOKEN.
+// against ONESILO_NODE_ADMIN_TOKEN.
 package adminapi
 
 import (
@@ -136,7 +136,7 @@ type RegistrationStatus struct {
 	DeviceID   string `json:"device_id"`
 	AuthMode   string `json:"auth_mode"`
 	// OAuthSignedIn reports whether a usable OAuth credential is stored
-	// (written by `silo-node setup` sign-in). Meaningful in gateway mode.
+	// (written by `onesilo-node setup` sign-in). Meaningful in gateway mode.
 	OAuthSignedIn bool `json:"oauth_signed_in"`
 	// SubscriptionRequired is true when the control plane refused remote
 	// registration because the owner's plan doesn't include remote access

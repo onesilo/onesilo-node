@@ -56,7 +56,7 @@ func TestRegisterEncodesRequestAndAuth(t *testing.T) {
 	if gotAuth != "Bearer tok-abc" {
 		t.Errorf("Authorization = %q", gotAuth)
 	}
-	if !strings.HasPrefix(gotUA, "silo-node/") {
+	if !strings.HasPrefix(gotUA, "onesilo-node/") {
 		t.Errorf("User-Agent = %q", gotUA)
 	}
 	if captured["tunnel_url"] != "https://abc.trycloudflare.com" ||

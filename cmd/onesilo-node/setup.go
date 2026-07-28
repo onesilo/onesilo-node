@@ -23,7 +23,7 @@ import (
 	"github.com/onesilo/onesilo-node/internal/tunnel"
 )
 
-// runSetup implements `silo-node setup`: an interactive wizard that takes a
+// runSetup implements `onesilo-node setup`: an interactive wizard that takes a
 // standalone machine from nothing to a runnable node in one command. It
 // asks which mode the node runs in (Local Node: private memory + LLM; Local
 // Relay: also relays the control-plane cloud surface) and whether to enable
@@ -34,8 +34,8 @@ import (
 // credentials. Everything persists to the config file. Every step is
 // idempotent, so re-running setup is always safe.
 func runSetup(args []string) int {
-	fs := flag.NewFlagSet("silo-node setup", flag.ExitOnError)
-	configPath := fs.String("config", "", "path to TOML config file (default ~/.silo-node/config.toml)")
+	fs := flag.NewFlagSet("onesilo-node setup", flag.ExitOnError)
+	configPath := fs.String("config", "", "path to TOML config file (default ~/.onesilo-node/config.toml)")
 	yes := fs.Bool("yes", false, "non-interactive: accept every default")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -46,7 +46,7 @@ func runSetup(args []string) int {
 
 	path := *configPath
 	if path == "" {
-		path = os.Getenv("SILO_NODE_CONFIG")
+		path = os.Getenv("ONESILO_NODE_CONFIG")
 	}
 	if path == "" {
 		path = config.DefaultPath()
@@ -59,18 +59,18 @@ func runSetup(args []string) int {
 		LookupEnv: func(string) (string, bool) { return "", false },
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "silo-node setup: "+err.Error())
+		fmt.Fprintln(os.Stderr, "onesilo-node setup: "+err.Error())
 		return 1
 	}
 
 	dataDir, err := cfg.ResolvedDataDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "silo-node setup: "+err.Error())
+		fmt.Fprintln(os.Stderr, "onesilo-node setup: "+err.Error())
 		return 1
 	}
 
 	p := &prompter{in: bufio.NewReader(os.Stdin), out: os.Stdout, assumeYes: *yes}
-	p.printf("silo-node setup\n\n")
+	p.printf("onesilo-node setup\n\n")
 	p.printf("  data dir: %s\n", dataDir)
 	p.printf("  config:   %s\n\n", path)
 
@@ -119,15 +119,15 @@ func runSetup(args []string) int {
 	// Admin token — generated once, loaded automatically at start.
 	p.printf("\nAdmin API token\n")
 	if _, created, err := ensureAdminToken(dataDir); err != nil {
-		fmt.Fprintln(os.Stderr, "silo-node setup: "+err.Error())
+		fmt.Fprintln(os.Stderr, "onesilo-node setup: "+err.Error())
 		return 1
 	} else if created {
-		p.printf("  generated %s (0600); silo-node loads it automatically\n", filepath.Join(dataDir, adminTokenFile))
+		p.printf("  generated %s (0600); onesilo-node loads it automatically\n", filepath.Join(dataDir, adminTokenFile))
 	} else {
 		p.printf("  using existing %s\n", filepath.Join(dataDir, adminTokenFile))
 	}
-	if env := os.Getenv("SILO_NODE_ADMIN_TOKEN"); env != "" {
-		p.printf("  note: SILO_NODE_ADMIN_TOKEN is set in this shell and takes precedence at runtime\n")
+	if env := os.Getenv("ONESILO_NODE_ADMIN_TOKEN"); env != "" {
+		p.printf("  note: ONESILO_NODE_ADMIN_TOKEN is set in this shell and takes precedence at runtime\n")
 	}
 
 	// Compute — local LLM inference via Ollama. The point of a local node;
@@ -173,11 +173,11 @@ func runSetup(args []string) int {
 	}
 
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintln(os.Stderr, "silo-node setup: "+err.Error())
+		fmt.Fprintln(os.Stderr, "onesilo-node setup: "+err.Error())
 		return 1
 	}
 	if err := config.Save(cfg, path); err != nil {
-		fmt.Fprintln(os.Stderr, "silo-node setup: "+err.Error())
+		fmt.Fprintln(os.Stderr, "onesilo-node setup: "+err.Error())
 		return 1
 	}
 
@@ -197,7 +197,7 @@ func runSetup(args []string) int {
 	if (isGateway || exposed) && cfg.ControlPlane.AuthMode == config.AuthModeAPIKey {
 		p.printf("  export SILO_API_KEY=\"sc_...\"   # from your One Silo account\n")
 	}
-	p.printf("  silo-node\n")
+	p.printf("  onesilo-node\n")
 	return 0
 }
 
@@ -240,7 +240,7 @@ func setupSignIn(ctx context.Context, cfg *config.Config, dataDir string, p *pro
 		// Non-interactive runs can't complete a browser flow.
 		cfg.ControlPlane.AuthMode = config.AuthModeAPIKey
 		p.printf("  non-interactive: skipping browser sign-in — using an sc_ API key instead\n")
-		p.printf("  (re-run `silo-node setup` without -yes to sign in)\n")
+		p.printf("  (re-run `onesilo-node setup` without -yes to sign in)\n")
 		return
 	}
 
@@ -255,10 +255,10 @@ func setupSignIn(ctx context.Context, cfg *config.Config, dataDir string, p *pro
 		}
 		if errors.Is(err, errUserNotFound) {
 			p.printf("  ! user not found — please create an account at https://onesilo.com first,\n")
-			p.printf("  ! then re-run `silo-node setup` to sign in\n")
+			p.printf("  ! then re-run `onesilo-node setup` to sign in\n")
 		} else {
 			p.printf("  ! sign-in failed: %s\n", err)
-			p.printf("  ! no One Silo account? Create one at https://onesilo.com and re-run `silo-node setup`\n")
+			p.printf("  ! no One Silo account? Create one at https://onesilo.com and re-run `onesilo-node setup`\n")
 		}
 	}
 
@@ -276,7 +276,7 @@ func deviceNameFor(cfg *config.Config) string {
 	if host, err := os.Hostname(); err == nil {
 		return host
 	}
-	return "silo-node"
+	return "onesilo-node"
 }
 
 func authSummary(cfg config.Config) string {
@@ -459,7 +459,7 @@ func setupTunnel(ctx context.Context, cfg *config.Config, dataDir string, p *pro
 
 // prompter asks yes/no questions on the terminal; assumeYes (the -yes flag)
 // answers every question with its default, and EOF on stdin does the same,
-// so `silo-node setup -yes` and piped input both stay non-blocking.
+// so `onesilo-node setup -yes` and piped input both stay non-blocking.
 type prompter struct {
 	in        *bufio.Reader
 	out       io.Writer

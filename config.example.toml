@@ -1,9 +1,9 @@
-# silo-node example configuration
+# onesilo-node example configuration
 #
-# Copy to ~/.silo-node/config.toml (or pass -config /path/to/config.toml).
+# Copy to ~/.onesilo-node/config.toml (or pass -config /path/to/config.toml).
 # Every key can also be set by environment variable or CLI flag; precedence
-# is: flags > SILO_NODE_* env > this file > built-in defaults.
-# Run `silo-node -h` for the full flag/env list.
+# is: flags > ONESILO_NODE_* env > this file > built-in defaults.
+# Run `onesilo-node -h` for the full flag/env list.
 
 # What this node is:
 #   "local"   - self-contained: local memory and local LLM only. The node
@@ -14,13 +14,13 @@
 #               surface — cloud silos, connectors, MCP — to local clients
 #               at /v1/cloud/* on lan.port (X-Silo-Node-Key authenticated).
 #               Tunnels and destination registration also require this mode.
-# env: SILO_NODE_MODE
+# env: ONESILO_NODE_MODE
 mode = "local"
 
 # Directory for node state: device_id, pairing.key, and the persisted config
 # when it is updated through the admin API. "~" is expanded.
-# env: SILO_NODE_DATA_DIR
-data_dir = "~/.silo-node"
+# env: ONESILO_NODE_DATA_DIR
+data_dir = "~/.onesilo-node"
 
 [log]
 # Output format: "text" (human-friendly) or "json" (log shippers).
@@ -46,7 +46,7 @@ compute = false
 
 [control_plane]
 # Base URL of the Silo backend.
-# env: SILO_NODE_CONTROL_PLANE_URL
+# env: ONESILO_NODE_CONTROL_PLANE_URL
 url = "https://api.onesilo.com"
 
 # How the node authenticates to the control plane:
@@ -55,7 +55,7 @@ url = "https://api.onesilo.com"
 #               desktop deployment.
 #   "api_key" - an sc_ API key read from the SILO_API_KEY environment
 #               variable. Use this for Docker / headless deployments.
-#   "oauth"   - the credential stored by the `silo-node setup` sign-in step
+#   "oauth"   - the credential stored by the `onesilo-node setup` sign-in step
 #               (<data_dir>/oauth.json): the node holds its own OAuth grant
 #               — like the Silo iOS app — refreshes tokens automatically,
 #               and appears as a revocable connection in your dashboard.
@@ -74,7 +74,7 @@ embed_model = "nomic-embed-text"
 # Base URL of the Ollama server the compute capability uses.
 host = "http://127.0.0.1:11434"
 
-# When true and no server answers at `host`, silo-node spawns `ollama serve`
+# When true and no server answers at `host`, onesilo-node spawns `ollama serve`
 # itself (searching binary_path, $PATH, /opt/homebrew/bin, /usr/local/bin)
 # and stops it again when the capability stops. When false, an unreachable
 # server is reported as unhealthy instead.
@@ -143,6 +143,6 @@ enabled = false
 
 [admin]
 # Localhost-only admin API port. The Silo Desktop app drives the node
-# through this API; it is authenticated with the SILO_NODE_ADMIN_TOKEN
+# through this API; it is authenticated with the ONESILO_NODE_ADMIN_TOKEN
 # environment variable (all routes except GET /healthz).
 port = 8766

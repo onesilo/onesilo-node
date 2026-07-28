@@ -13,5 +13,5 @@ var (
 
 // UserAgent returns the User-Agent string used for control-plane requests.
 func UserAgent() string {
-	return "silo-node/" + Version
+	return "onesilo-node/" + Version
 }

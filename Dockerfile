@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Reproducible multi-stage build for silo-node.
+# Reproducible multi-stage build for onesilo-node.
 #
 # The base images are pinned by digest and the Go build is stripped of all
 # non-deterministic inputs (-trimpath, -buildid=, CGO off), so building the
@@ -10,10 +10,10 @@
 # in scripts/build-image.sh (or `make image-verify`).
 #
 #   ./scripts/build-image.sh            # build twice, assert identical IDs
-#   docker build -t silo-node .        # plain single build (not timestamp-normalized)
+#   docker build -t onesilo-node .        # plain single build (not timestamp-normalized)
 
 # ---------------------------------------------------------------------------
-# Stage 1: build silo-node and fetch a checksum-pinned cloudflared
+# Stage 1: build onesilo-node and fetch a checksum-pinned cloudflared
 # ---------------------------------------------------------------------------
 FROM golang:1.26.4-bookworm@sha256:b305420a68d0f229d91eb3b3ed9e519fcf2cf5461da4bef997bf927e8c0bfd2b AS build
 
@@ -52,28 +52,28 @@ RUN GOARCH="${TARGETARCH}" go build \
       -ldflags "-s -w -buildid= \
         -X github.com/onesilo/onesilo-node/internal/version.Version=${VERSION} \
         -X github.com/onesilo/onesilo-node/internal/version.Commit=${COMMIT}" \
-      -o /silo-node ./cmd/silo-node
+      -o /onesilo-node ./cmd/onesilo-node
 
 # ---------------------------------------------------------------------------
 # Stage 2: distroless runtime (static binaries only; CA certs + tzdata included)
 # ---------------------------------------------------------------------------
 FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
 
-COPY --from=build /silo-node   /silo-node
+COPY --from=build /onesilo-node   /onesilo-node
 COPY --from=build /cloudflared /cloudflared
 
-# All configuration is environment-driven (SILO_NODE_* vars; see
-# `silo-node -h`). /data holds node state (device_id, pairing.key) and the
+# All configuration is environment-driven (ONESILO_NODE_* vars; see
+# `onesilo-node -h`). /data holds node state (device_id, pairing.key) and the
 # optional persisted config.toml written by the admin API.
-ENV SILO_NODE_DATA_DIR=/data \
-    SILO_NODE_CONFIG=/data/config.toml \
-    SILO_NODE_CLOUDFLARED_PATH=/cloudflared
+ENV ONESILO_NODE_DATA_DIR=/data \
+    ONESILO_NODE_CONFIG=/data/config.toml \
+    ONESILO_NODE_CLOUDFLARED_PATH=/cloudflared
 
 VOLUME /data
 
 # The admin API binds 127.0.0.1:8766 *inside* the container and is not
 # reachable from outside; /healthz keeps Docker's health status accurate.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["/silo-node", "healthcheck"]
+  CMD ["/onesilo-node", "healthcheck"]
 
-ENTRYPOINT ["/silo-node"]
+ENTRYPOINT ["/onesilo-node"]

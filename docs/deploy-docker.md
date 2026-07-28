@@ -1,9 +1,9 @@
-# Deploying silo-node with Docker
+# Deploying onesilo-node with Docker
 
 The repo ships a reproducible, distroless Docker image and a
 `docker-compose.yml` that pairs the node with an [Ollama](https://ollama.com)
 sidecar for the compute capability. All configuration is environment-driven —
-every `SILO_NODE_*` variable maps 1:1 to a config key (`silo-node -h` lists
+every `ONESILO_NODE_*` variable maps 1:1 to a config key (`onesilo-node -h` lists
 them; the table lives in `internal/config/load.go`).
 
 ## Quickstart
@@ -11,8 +11,8 @@ them; the table lives in `internal/config/load.go`).
 ```bash
 export SILO_API_KEY=sc_...          # see "Attach to your Silo account" below
 docker compose up -d
-docker compose ps                    # wait for silo-node to report (healthy)
-docker compose logs -f silo-node
+docker compose ps                    # wait for onesilo-node to report (healthy)
+docker compose logs -f onesilo-node
 ```
 
 On first start the node generates its identity under the `silo-data` volume,
@@ -46,7 +46,7 @@ connection** of app type `silo_node`:
    the old one).
 
 3. Pass it to the container as `SILO_API_KEY` and set
-   `SILO_NODE_AUTH_MODE=api_key` (the compose file already does the latter).
+   `ONESILO_NODE_AUTH_MODE=api_key` (the compose file already does the latter).
 
 The key is identity only; revoking the connection immediately detaches the
 node.
@@ -58,19 +58,19 @@ a public URL is available:
 
 | Env var | Default | Effect |
 |---------|---------|--------|
-| `SILO_NODE_MEMORY` | `false` | Silos homed on this node (`silo_recall` / `silo_remember`). Stores are SQLite files under `/data`. |
-| `SILO_NODE_COMPUTE` | `false` | Local LLM inference through Ollama (`SILO_NODE_OLLAMA_HOST`, `http://ollama:11434` in compose). |
-| `SILO_NODE_LAN_ENABLED` | `false` | LAN serving for the Silo iOS app. Bonjour discovery does not cross the Docker network boundary, so LAN mode in a container requires publishing port 8765 (uncomment `ports` in compose) and connecting by IP. |
+| `ONESILO_NODE_MEMORY` | `false` | Silos homed on this node (`silo_recall` / `silo_remember`). Stores are SQLite files under `/data`. |
+| `ONESILO_NODE_COMPUTE` | `false` | Local LLM inference through Ollama (`ONESILO_NODE_OLLAMA_HOST`, `http://ollama:11434` in compose). |
+| `ONESILO_NODE_LAN_ENABLED` | `false` | LAN serving for the Silo iOS app. Bonjour discovery does not cross the Docker network boundary, so LAN mode in a container requires publishing port 8765 (uncomment `ports` in compose) and connecting by IP. |
 
 Memory-only nodes work without the Ollama sidecar (recall falls back to
-keyword search); with compute enabled, `SILO_NODE_MEMORY_EMBED_MODEL`
+keyword search); with compute enabled, `ONESILO_NODE_MEMORY_EMBED_MODEL`
 (default `nomic-embed-text`) upgrades recall to hybrid vector + FTS.
 
 ## Tunnels
 
 The node needs a public HTTPS URL to be reachable by the control plane.
 
-**Quick tunnel (default in compose)** — `SILO_NODE_TUNNEL_MODE=quick` spawns
+**Quick tunnel (default in compose)** — `ONESILO_NODE_TUNNEL_MODE=quick` spawns
 the bundled `/cloudflared` binary and gets an ephemeral
 `*.trycloudflare.com` URL. Zero setup, but the hostname changes on every
 restart (the node re-registers automatically).
@@ -78,8 +78,8 @@ restart (the node re-registers automatically).
 **Named tunnel (stable hostname)** — run cloudflared yourself and tell the
 node its public URL:
 
-1. Create a named tunnel: `cloudflared tunnel create silo-node`, route it to
-   the container (`ingress` → `http://silo-node:8765`), and note the tunnel
+1. Create a named tunnel: `cloudflared tunnel create onesilo-node`, route it to
+   the container (`ingress` → `http://onesilo-node:8765`), and note the tunnel
    UUID.
 2. Run `cloudflare/cloudflared` as another compose service with
    `tunnel run --token ...`, attached to the same network.
@@ -87,8 +87,8 @@ node its public URL:
 
    ```yaml
    environment:
-     SILO_NODE_TUNNEL_MODE: external
-     SILO_NODE_TUNNEL_EXTERNAL_URL: https://<tunnel-uuid>.cfargotunnel.com
+     ONESILO_NODE_TUNNEL_MODE: external
+     ONESILO_NODE_TUNNEL_EXTERNAL_URL: https://<tunnel-uuid>.cfargotunnel.com
    ```
 
    Any HTTPS URL that reaches the node's LAN port (8765) works, including a
@@ -101,18 +101,18 @@ URL to the control plane.
 
 The admin API binds `127.0.0.1:8766` **inside the container**
 (`internal/adminapi/server.go`) and cannot be published with `ports:` — this
-is deliberate. Docker's `HEALTHCHECK` runs `/silo-node healthcheck` inside
+is deliberate. Docker's `HEALTHCHECK` runs `/onesilo-node healthcheck` inside
 the container network namespace, so health status still works.
 
 The image is distroless (no shell, no curl), so you cannot `docker exec` into
 it. Operate the node through environment variables: change the env, then
 `docker compose up -d` to recreate. If you need the authenticated admin API
-(e.g. `GET /v1/status`), set `SILO_NODE_ADMIN_TOKEN` and query it from a
+(e.g. `GET /v1/status`), set `ONESILO_NODE_ADMIN_TOKEN` and query it from a
 debug sidecar sharing the network namespace:
 
 ```bash
-docker run --rm --network container:<silo-node-container> curlimages/curl \
-  -H "Authorization: Bearer $SILO_NODE_ADMIN_TOKEN" \
+docker run --rm --network container:<onesilo-node-container> curlimages/curl \
+  -H "Authorization: Bearer $ONESILO_NODE_ADMIN_TOKEN" \
   http://127.0.0.1:8766/v1/status
 ```
 
@@ -125,7 +125,7 @@ docker run --rm --network container:<silo-node-container> curlimages/curl \
 - `pairing.key` — E2E key for LAN serving,
 - memory silo SQLite databases,
 - `config.toml` — written only if config is changed via the admin API
-  (`SILO_NODE_CONFIG=/data/config.toml`); env vars still override it.
+  (`ONESILO_NODE_CONFIG=/data/config.toml`); env vars still override it.
 
 Back up the volume to preserve node identity and memories. Ollama models
 live in the separate `ollama-models` volume and are re-pullable.
@@ -134,7 +134,7 @@ live in the separate `ollama-models` volume and are re-pullable.
 
 ```bash
 git pull
-docker compose build silo-node
+docker compose build onesilo-node
 docker compose up -d
 ```
 
@@ -166,7 +166,7 @@ make image-verify      # = scripts/build-image.sh
 ```
 
 This builds the image twice — the second time with `--no-cache` — and fails
-unless both the embedded `/silo-node` binary SHA-256 **and** the full image
+unless both the embedded `/onesilo-node` binary SHA-256 **and** the full image
 IDs are identical. To audit a published image, run the script at the release
 tag and compare the printed image ID and binary SHA-256 against the release
 notes.

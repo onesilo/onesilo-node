@@ -1,8 +1,8 @@
-// silo-node admin UI. Dependency-free SPA: token gate, hash router,
+// onesilo-node admin UI. Dependency-free SPA: token gate, hash router,
 // three views (Silos / Models / Settings) over the admin API.
 "use strict";
 
-const TOKEN_KEY = "silo-node-admin-token";
+const TOKEN_KEY = "onesilo-node-admin-token";
 
 const $ = (sel, el) => (el || document).querySelector(sel);
 const main = $("#main");
@@ -421,7 +421,7 @@ async function renderSettings() {
           : el("span", { class: "badge badge-gray" }, "not signed in"),
           reg.oauth_signed_in
             ? ""
-            : " — run silo-node setup to sign in"),
+            : " — run onesilo-node setup to sign in"),
         el("dt", null, "Tunnel"),
         el("dd", null, status.tunnel && status.tunnel.url
           ? status.tunnel.url
@@ -486,9 +486,9 @@ async function renderSettings() {
       "How this node appears in the One Silo dashboard."),
     field("Control plane URL", text("cp_url", cfg.control_plane.url)),
     field("Auth mode", select("auth_mode", cfg.control_plane.auth_mode, [
-      ["oauth", "oauth — signed in via silo-node setup"],
+      ["oauth", "oauth — signed in via onesilo-node setup"],
       ["jwt", "jwt — token pushed by the desktop app"],
-      ["api_key", "api_key — from SILO_NODE_API_KEY"],
+      ["api_key", "api_key — from ONESILO_NODE_API_KEY"],
     ])),
     el("div", { class: "field-row" },
       field("Ollama host", text("ollama_host", cfg.ollama.host)),

@@ -1,5 +1,5 @@
-// Package config defines the typed silo-node configuration and its
-// load/save machinery. Precedence: flags > SILO_NODE_* env > TOML file >
+// Package config defines the typed onesilo-node configuration and its
+// load/save machinery. Precedence: flags > ONESILO_NODE_* env > TOML file >
 // defaults (see load.go).
 package config
 
@@ -45,14 +45,14 @@ const (
 const (
 	AuthModeJWT    = "jwt"
 	AuthModeAPIKey = "api_key"
-	// AuthModeOAuth uses the credential stored by the `silo-node setup`
+	// AuthModeOAuth uses the credential stored by the `onesilo-node setup`
 	// sign-in step (<data_dir>/oauth.json): the node holds its own OAuth
 	// grant — like the Silo iOS app — and appears as a connection in the
 	// owner's dashboard. Tokens refresh automatically.
 	AuthModeOAuth = "oauth"
 )
 
-// Config is the full silo-node configuration.
+// Config is the full onesilo-node configuration.
 type Config struct {
 	// Mode selects what this node is: "local" (self-contained, never talks
 	// to the control plane) or "gateway" (control-plane relay). See the
@@ -152,7 +152,7 @@ type OpenAI struct {
 func Default() Config {
 	return Config{
 		Mode:    ModeLocal,
-		DataDir: "~/.silo-node",
+		DataDir: "~/.onesilo-node",
 		Log: Log{
 			Format: "text",
 			Level:  "info",

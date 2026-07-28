@@ -10,7 +10,7 @@ import (
 )
 
 // Setting describes one overridable configuration knob: its CLI flag name,
-// its SILO_NODE_* environment variable, and how a raw string value is
+// its ONESILO_NODE_* environment variable, and how a raw string value is
 // applied to a Config. A single table drives both flag registration and the
 // load precedence, so the two can never drift.
 type Setting struct {
@@ -23,45 +23,45 @@ type Setting struct {
 // Settings returns the full override table.
 func Settings() []Setting {
 	return []Setting{
-		{"mode", "SILO_NODE_MODE", "node mode: local (self-contained) | gateway (control-plane relay)",
+		{"mode", "ONESILO_NODE_MODE", "node mode: local (self-contained) | gateway (control-plane relay)",
 			func(c *Config, v string) error { c.Mode = v; return nil }},
-		{"data-dir", "SILO_NODE_DATA_DIR", "directory for node state (device id, pairing key)",
+		{"data-dir", "ONESILO_NODE_DATA_DIR", "directory for node state (device id, pairing key)",
 			func(c *Config, v string) error { c.DataDir = v; return nil }},
-		{"log-format", "SILO_NODE_LOG_FORMAT", "log output format: text|json",
+		{"log-format", "ONESILO_NODE_LOG_FORMAT", "log output format: text|json",
 			func(c *Config, v string) error { c.Log.Format = v; return nil }},
-		{"log-level", "SILO_NODE_LOG_LEVEL", "log level: debug|info|warn|error",
+		{"log-level", "ONESILO_NODE_LOG_LEVEL", "log level: debug|info|warn|error",
 			func(c *Config, v string) error { c.Log.Level = v; return nil }},
-		{"memory", "SILO_NODE_MEMORY", "enable the memory capability (true|false)",
+		{"memory", "ONESILO_NODE_MEMORY", "enable the memory capability (true|false)",
 			boolSetting(func(c *Config, v bool) { c.Capabilities.Memory = v })},
-		{"compute", "SILO_NODE_COMPUTE", "enable the compute capability (true|false)",
+		{"compute", "ONESILO_NODE_COMPUTE", "enable the compute capability (true|false)",
 			boolSetting(func(c *Config, v bool) { c.Capabilities.Compute = v })},
-		{"control-plane-url", "SILO_NODE_CONTROL_PLANE_URL", "base URL of the Silo control plane",
+		{"control-plane-url", "ONESILO_NODE_CONTROL_PLANE_URL", "base URL of the Silo control plane",
 			func(c *Config, v string) error { c.ControlPlane.URL = v; return nil }},
-		{"auth-mode", "SILO_NODE_AUTH_MODE", "control plane auth mode: jwt|api_key|oauth",
+		{"auth-mode", "ONESILO_NODE_AUTH_MODE", "control plane auth mode: jwt|api_key|oauth",
 			func(c *Config, v string) error { c.ControlPlane.AuthMode = v; return nil }},
-		{"device-name", "SILO_NODE_DEVICE_NAME", "device name reported to the control plane (default: hostname)",
+		{"device-name", "ONESILO_NODE_DEVICE_NAME", "device name reported to the control plane (default: hostname)",
 			func(c *Config, v string) error { c.ControlPlane.DeviceName = v; return nil }},
-		{"memory-embed-model", "SILO_NODE_MEMORY_EMBED_MODEL", "Ollama embedding model for hybrid memory recall",
+		{"memory-embed-model", "ONESILO_NODE_MEMORY_EMBED_MODEL", "Ollama embedding model for hybrid memory recall",
 			func(c *Config, v string) error { c.Memory.EmbedModel = v; return nil }},
-		{"ollama-host", "SILO_NODE_OLLAMA_HOST", "base URL of the Ollama server",
+		{"ollama-host", "ONESILO_NODE_OLLAMA_HOST", "base URL of the Ollama server",
 			func(c *Config, v string) error { c.Ollama.Host = v; return nil }},
-		{"ollama-manage", "SILO_NODE_OLLAMA_MANAGE", "spawn `ollama serve` when unreachable (true|false)",
+		{"ollama-manage", "ONESILO_NODE_OLLAMA_MANAGE", "spawn `ollama serve` when unreachable (true|false)",
 			boolSetting(func(c *Config, v bool) { c.Ollama.Manage = v })},
-		{"ollama-default-model", "SILO_NODE_OLLAMA_DEFAULT_MODEL", "preferred Ollama model tag",
+		{"ollama-default-model", "ONESILO_NODE_OLLAMA_DEFAULT_MODEL", "preferred Ollama model tag",
 			func(c *Config, v string) error { c.Ollama.DefaultModel = v; return nil }},
-		{"ollama-binary", "SILO_NODE_OLLAMA_BINARY", "path to the ollama binary (managed mode)",
+		{"ollama-binary", "ONESILO_NODE_OLLAMA_BINARY", "path to the ollama binary (managed mode)",
 			func(c *Config, v string) error { c.Ollama.BinaryPath = v; return nil }},
-		{"tunnel-mode", "SILO_NODE_TUNNEL_MODE", "tunnel mode: off|managed|quick|external",
+		{"tunnel-mode", "ONESILO_NODE_TUNNEL_MODE", "tunnel mode: off|managed|quick|external",
 			func(c *Config, v string) error { c.Tunnel.Mode = v; return nil }},
-		{"cloudflared-path", "SILO_NODE_CLOUDFLARED_PATH", "path to the cloudflared binary (quick mode)",
+		{"cloudflared-path", "ONESILO_NODE_CLOUDFLARED_PATH", "path to the cloudflared binary (quick mode)",
 			func(c *Config, v string) error { c.Tunnel.CloudflaredPath = v; return nil }},
-		{"tunnel-external-url", "SILO_NODE_TUNNEL_EXTERNAL_URL", "public https URL (external mode)",
+		{"tunnel-external-url", "ONESILO_NODE_TUNNEL_EXTERNAL_URL", "public https URL (external mode)",
 			func(c *Config, v string) error { c.Tunnel.ExternalURL = v; return nil }},
-		{"lan-enabled", "SILO_NODE_LAN_ENABLED", "enable LAN serving (stub, later phase) (true|false)",
+		{"lan-enabled", "ONESILO_NODE_LAN_ENABLED", "enable LAN serving (stub, later phase) (true|false)",
 			boolSetting(func(c *Config, v bool) { c.LAN.Enabled = v })},
-		{"lan-port", "SILO_NODE_LAN_PORT", "LAN serving port (the quick tunnel targets this port)",
+		{"lan-port", "ONESILO_NODE_LAN_PORT", "LAN serving port (the quick tunnel targets this port)",
 			intSetting(func(c *Config, v int) { c.LAN.Port = v })},
-		{"admin-port", "SILO_NODE_ADMIN_PORT", "localhost admin API port",
+		{"admin-port", "ONESILO_NODE_ADMIN_PORT", "localhost admin API port",
 			intSetting(func(c *Config, v int) { c.Admin.Port = v })},
 	}
 }
@@ -101,13 +101,13 @@ type LoadOptions struct {
 }
 
 // DefaultPath returns the default config file location
-// (~/.silo-node/config.toml).
+// (~/.onesilo-node/config.toml).
 func DefaultPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "config.toml"
 	}
-	return filepath.Join(home, ".silo-node", "config.toml")
+	return filepath.Join(home, ".onesilo-node", "config.toml")
 }
 
 // Load builds a Config with precedence: flags > env > TOML file > defaults.

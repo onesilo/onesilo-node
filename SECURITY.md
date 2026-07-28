@@ -14,7 +14,7 @@ publicly.
 
 ## Scope
 
-This repository is the silo-node daemon. Findings in the One Silo control
+This repository is the onesilo-node daemon. Findings in the One Silo control
 plane, the iOS or Mac apps, or the web dashboard should go to the same
 address — say which component you are reporting on.
 
@@ -49,5 +49,5 @@ Things we are particularly interested in:
 
 ## Supported versions
 
-silo-node is pre-1.0 and moves quickly. Fixes land on `main`; there are no
+onesilo-node is pre-1.0 and moves quickly. Fixes land on `main`; there are no
 backported release branches yet. Run a recent build.

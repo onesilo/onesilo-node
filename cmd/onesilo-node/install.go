@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// Download helpers for `silo-node setup`: fetch official Ollama and
+// Download helpers for `onesilo-node setup`: fetch official Ollama and
 // cloudflared release builds into data_dir so the node needs no package
 // manager and no manual installs.
 

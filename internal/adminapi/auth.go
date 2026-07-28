@@ -10,7 +10,7 @@ import (
 
 // AdminTokenEnvVar is where the desktop app (or operator) provides the
 // shared secret for the admin API.
-const AdminTokenEnvVar = "SILO_NODE_ADMIN_TOKEN"
+const AdminTokenEnvVar = "ONESILO_NODE_ADMIN_TOKEN"
 
 // requireAdminToken wraps a handler with a constant-time bearer check
 // against the configured admin token. /healthz is registered outside this

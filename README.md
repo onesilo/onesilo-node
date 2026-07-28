@@ -1,4 +1,4 @@
-# silo-node
+# onesilo-node
 
 An open-source node for the [One Silo](https://onesilo.com) network. A node is a
 machine you own — a Mac in your office, a home server, a container on your
@@ -64,7 +64,7 @@ a public URL (see tunnels below), it registers itself with the Silo control
 plane as a *destination*, heartbeats every ~30 seconds with per-capability
 liveness, and deregisters on shutdown.
 
-silo-node ships two ways:
+onesilo-node ships two ways:
 
 - **Bundled inside Silo Desktop** — the Mac app runs the binary and drives
   it over the localhost admin API (config, auth tokens, lifecycle). You
@@ -78,19 +78,19 @@ silo-node ships two ways:
 
 ```bash
 make build              # Go 1.25+
-./bin/silo-node setup   # interactive wizard (or `setup -yes` for defaults)
+./bin/onesilo-node setup   # interactive wizard (or `setup -yes` for defaults)
 
 export SILO_API_KEY="sc_..."   # only if the node relays or is exposed — from your Silo account
-./bin/silo-node
+./bin/onesilo-node
 ```
 
 `setup` asks for what it needs and provisions the rest:
 
 - asks which **mode** the node runs in — `local` (private, the default) or
   `gateway` (One Silo relay) — and branches the remaining steps on it;
-- generates the admin API token at `~/.silo-node/admin.token` (0600) —
+- generates the admin API token at `~/.onesilo-node/admin.token` (0600) —
   loaded automatically at start, no env var needed
-  (`SILO_NODE_ADMIN_TOKEN` still wins when set);
+  (`ONESILO_NODE_ADMIN_TOKEN` still wins when set);
 - finds a running Ollama server or an existing install; when there is
   neither, it downloads the official Ollama release into the data dir and
   pulls the default model, so compute works with nothing pre-installed;
@@ -102,35 +102,35 @@ export SILO_API_KEY="sc_..."   # only if the node relays or is exposed — from 
   Relay;
 - for a relay or an exposed node, **signs you in to One
   Silo** — a browser OAuth flow, after which the node holds its own
-  refreshable credential (`~/.silo-node/oauth.json`, 0600) and appears in
+  refreshable credential (`~/.onesilo-node/oauth.json`, 0600) and appears in
   your [dashboard connections](https://dashboard.onesilo.com/connections),
   just like the Silo iOS app. No account yet? The wizard points you to
   [onesilo.com](https://onesilo.com) to create one. An `sc_` API key
   remains the headless fallback;
-- writes it all to `~/.silo-node/config.toml`.
+- writes it all to `~/.onesilo-node/config.toml`.
 
 Re-running `setup` is safe — it keeps previous choices as defaults. Check
 the running node:
 
 ```bash
-curl -s -H "Authorization: Bearer $(cat ~/.silo-node/admin.token)" \
+curl -s -H "Authorization: Bearer $(cat ~/.onesilo-node/admin.token)" \
   http://127.0.0.1:8766/v1/status | jq
 ```
 
 Prefer hand-written config? Copy
-[`config.example.toml`](config.example.toml) to `~/.silo-node/config.toml`
+[`config.example.toml`](config.example.toml) to `~/.onesilo-node/config.toml`
 — it documents every option — and every knob is also a CLI flag / env var
-(`silo-node -h`).
+(`onesilo-node -h`).
 
 ## Configuration
 
-Precedence: **CLI flags > `SILO_NODE_*` env vars > TOML file > defaults**.
-`silo-node -h` lists every flag with its matching env var.
+Precedence: **CLI flags > `ONESILO_NODE_*` env vars > TOML file > defaults**.
+`onesilo-node -h` lists every flag with its matching env var.
 
 | Section | Key | Default | Notes |
 |---------|-----|---------|-------|
 | — | `mode` | `local` | `local` (self-contained, no cloud) or `gateway` (control-plane relay) |
-| — | `data_dir` | `~/.silo-node` | device id, pairing key, persisted config |
+| — | `data_dir` | `~/.onesilo-node` | device id, pairing key, persisted config |
 | `log` | `format` / `level` | `text` / `info` | `json` for shippers |
 | `capabilities` | `memory`, `compute` | `false` | independently toggled |
 | `control_plane` | `url` | `https://api.onesilo.com` | |
@@ -154,12 +154,12 @@ live by the reconciler and persisted back to the config file. (A changed
 
 Bound to `127.0.0.1:<admin.port>` only. Every route except `GET /healthz`
 requires `Authorization: Bearer <admin token>`. The token comes from
-`SILO_NODE_ADMIN_TOKEN` when set, else from `<data_dir>/admin.token`
-(written by `silo-node setup`); with neither present the API fails closed.
+`ONESILO_NODE_ADMIN_TOKEN` when set, else from `<data_dir>/admin.token`
+(written by `onesilo-node setup`); with neither present the API fails closed.
 
 | Route | Purpose |
 |-------|---------|
-| `GET /healthz` | liveness (no auth; used by `silo-node healthcheck` / Docker) |
+| `GET /healthz` | liveness (no auth; used by `onesilo-node healthcheck` / Docker) |
 | `GET /v1/status` | version, capability health, tunnel URL, registration state, LAN server status, memory status, and the node key |
 | `GET /v1/config` | current configuration |
 | `PUT /v1/config` | partial update; persisted + reconciled live |
@@ -174,7 +174,7 @@ requires `Authorization: Bearer <admin token>`. The token comes from
 | `GET /v1/models` | installed Ollama models, active/default flags, pull progress |
 | `POST /v1/models/pull` | start a background model pull; body `{"model": "..."}` |
 
-`silo-node healthcheck` probes `/healthz` and exits 0/1 — wire it to a
+`onesilo-node healthcheck` probes `/healthz` and exits 0/1 — wire it to a
 Docker `HEALTHCHECK`.
 
 ## Admin UI
@@ -219,7 +219,7 @@ over Ollama embeddings whenever the compute capability is also enabled
 | `DELETE /v1/memory/{silo_id}/{memory_id}` | → `{"deleted": true}` |
 
 ```bash
-NODE_KEY=$(curl -s -H "Authorization: Bearer $(cat ~/.silo-node/admin.token)" \
+NODE_KEY=$(curl -s -H "Authorization: Bearer $(cat ~/.onesilo-node/admin.token)" \
   http://127.0.0.1:8766/v1/status | jq -r .node_key)
 curl -s -X POST -H "X-Silo-Node-Key: $NODE_KEY" \
   -d '{"content": "the deploy runs at 9am"}' \
@@ -325,7 +325,7 @@ the device id are all written `0600`.
 ## Development
 
 ```bash
-make build      # bin/silo-node with version/commit ldflags
+make build      # bin/onesilo-node with version/commit ldflags
 make test       # go test ./...
 make lint       # go vet + gofmt check
 ```

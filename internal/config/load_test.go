@@ -14,7 +14,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.DataDir != "~/.silo-node" {
+	if cfg.DataDir != "~/.onesilo-node" {
 		t.Errorf("DataDir = %q", cfg.DataDir)
 	}
 	if cfg.ControlPlane.URL != "https://api.onesilo.com" {
@@ -48,7 +48,7 @@ func writeFile(t *testing.T, content string) string {
 
 func TestLoadFileOverridesDefaults(t *testing.T) {
 	path := writeFile(t, `
-data_dir = "/var/lib/silo-node"
+data_dir = "/var/lib/onesilo-node"
 
 [capabilities]
 compute = true
@@ -63,7 +63,7 @@ port = 9000
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.DataDir != "/var/lib/silo-node" {
+	if cfg.DataDir != "/var/lib/onesilo-node" {
 		t.Errorf("DataDir = %q", cfg.DataDir)
 	}
 	if !cfg.Capabilities.Compute {
@@ -90,8 +90,8 @@ default_model = "from-file:1b"
 port = 9000
 `)
 	env := map[string]string{
-		"SILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
-		"SILO_NODE_COMPUTE":              "true",
+		"ONESILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
+		"ONESILO_NODE_COMPUTE":              "true",
 	}
 	cfg, err := Load(LoadOptions{
 		Path:      path,
@@ -104,7 +104,7 @@ port = 9000
 		t.Errorf("env should beat file: %q", cfg.Ollama.DefaultModel)
 	}
 	if !cfg.Capabilities.Compute {
-		t.Error("SILO_NODE_COMPUTE=true should enable compute")
+		t.Error("ONESILO_NODE_COMPUTE=true should enable compute")
 	}
 	if cfg.Admin.Port != 9000 {
 		t.Errorf("file value without env override should hold: %d", cfg.Admin.Port)
@@ -113,8 +113,8 @@ port = 9000
 
 func TestLoadFlagsOverrideEnv(t *testing.T) {
 	env := map[string]string{
-		"SILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
-		"SILO_NODE_ADMIN_PORT":           "9001",
+		"ONESILO_NODE_OLLAMA_DEFAULT_MODEL": "from-env:1b",
+		"ONESILO_NODE_ADMIN_PORT":           "9001",
 	}
 	cfg, err := Load(LoadOptions{
 		FlagValues: map[string]string{
@@ -197,11 +197,11 @@ func TestExpandTilde(t *testing.T) {
 	if err != nil {
 		t.Skip("no home dir")
 	}
-	got, err := ExpandTilde("~/.silo-node")
+	got, err := ExpandTilde("~/.onesilo-node")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != filepath.Join(home, ".silo-node") {
+	if got != filepath.Join(home, ".onesilo-node") {
 		t.Errorf("ExpandTilde = %q", got)
 	}
 	got, err = ExpandTilde("/absolute/path")

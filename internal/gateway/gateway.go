@@ -37,7 +37,7 @@ const probeTimeout = 3 * time.Second
 
 // noCredentialsHint names every supported credential path, so a user who
 // chose OAuth during setup isn't steered toward an API key by mistake.
-const noCredentialsHint = "sign in with `silo-node setup`, set " +
+const noCredentialsHint = "sign in with `onesilo-node setup`, set " +
 	controlplane.APIKeyEnvVar + ", or push a JWT"
 
 // Capability implements node.Capability for the control-plane relay.

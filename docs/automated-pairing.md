@@ -24,7 +24,7 @@ generates or scans anything.
 
 Two gaps follow:
 
-1. **Headless nodes can't pair.** A standalone `silo-node` (no Silo Desktop
+1. **Headless nodes can't pair.** A standalone `onesilo-node` (no Silo Desktop
    driving it) has no way to establish a pairing key with an app. An
    operator would have to hand-generate 64 hex, `curl` it into the admin
    API, and separately get the same value into the app. There is no QR
