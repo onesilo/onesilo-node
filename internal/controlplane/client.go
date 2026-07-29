@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/onesilo/onesilo-node/internal/fsutil"
 	"github.com/onesilo/onesilo-node/internal/version"
 )
 
@@ -222,12 +223,18 @@ func LoadOrCreateDeviceID(dataDir string) (string, error) {
 }
 
 // SaveDeviceID persists the device id (0600).
+//
+// Written atomically, like the node's other identity files: a crash during a
+// plain WriteFile can leave a truncated id, and LoadOrCreateDeviceID treats
+// an unparseable file as corrupt and mints a fresh one — which is exactly the
+// case the stable id exists to prevent, since the control plane would then
+// accumulate a second destination for the same machine.
 func SaveDeviceID(dataDir, id string) error {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return fmt.Errorf("creating data dir: %w", err)
 	}
 	path := filepath.Join(dataDir, deviceIDFile)
-	if err := os.WriteFile(path, []byte(id+"\n"), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomic(path, []byte(id+"\n"), 0o600); err != nil {
 		return fmt.Errorf("persisting device id: %w", err)
 	}
 	return nil
