@@ -201,6 +201,15 @@ requires `Authorization: Bearer <admin token>`. The token comes from
 `onesilo-node healthcheck` probes `/healthz` and exits 0/1 — wire it to a
 Docker `HEALTHCHECK`.
 
+### Running under a host app
+
+A host app that spawns the node as a child process (Silo Desktop does) can
+set `SILO_NODE_PARENT_PID` to its own pid. The node then polls that process
+and shuts itself down gracefully when it goes away, instead of surviving a
+host that was killed rather than quit — an orphan would keep holding
+`admin.port` and the host's next launch would fail to bind it. Unset (the
+Docker and headless case) means no parent supervision.
+
 ## Admin UI
 
 The admin port also serves a dashboard at `http://127.0.0.1:8766/` —

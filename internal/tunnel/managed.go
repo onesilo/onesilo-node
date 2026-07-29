@@ -246,6 +246,8 @@ func (m *ManagedManager) spawn(ctx context.Context, token string) (*exec.Cmd, er
 		return nil, err
 	}
 
+	logFallback(m.logger, m.binaryPath, binary)
+
 	cmd := exec.Command(binary, "tunnel", "run")
 	cmd.Env = append(os.Environ(), "TUNNEL_TOKEN="+token)
 	readyCh := make(chan struct{}, 2)
