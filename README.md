@@ -78,7 +78,7 @@ pick by where it is running:
 
 | Method | Best for | What it takes |
 |---|---|---|
-| **Homebrew** | a Mac or Linux workstation | `brew tap onesilo/tap && brew install onesilo-node` — builds from source, then `onesilo-node setup`. |
+| **Homebrew** | a Mac or Linux workstation | `brew tap onesilo/tap && brew install onesilo-node` — builds from source, then `onesilo-node setup`. Needs a tagged release; see below. |
 | **Docker** | a NAS, a home server, anything long-running | A reproducible distroless image and a compose file with an Ollama sidecar — see [docs/deploy-docker.md](docs/deploy-docker.md). |
 | **From source** | hacking on it, or a machine you already develop on | `make build` (see [Quickstart](#quickstart)). |
 | **`go install`** | the quickest start if you already have Go | `go install github.com/onesilo/onesilo-node/cmd/onesilo-node@latest` |
@@ -99,13 +99,20 @@ Desktop is for.
 The Homebrew formula is not an exception to that. It **builds from source**
 rather than fetching a prebuilt binary, so nothing is downloaded that
 Gatekeeper would quarantine — you get the same binary `go install` produces,
-with an upgrade path. Its flags are kept aligned with
-`scripts/verify-builds.sh`, so a brewed build stays byte-comparable to the
-released one for the same commit rather than becoming a third variant nobody
-checks.
+with an upgrade path. Its flags match `scripts/verify-builds.sh` (`-trimpath`,
+`-s -w -buildid=`, `CGO_ENABLED=0`) and it pins `GOTOOLCHAIN=local` so the
+build cannot quietly fetch a different toolchain mid-install, rather than
+becoming a third configuration nobody checks.
 
-The tap is not published yet. Until it is, build the formula from a
-checkout: `brew install --build-from-source ./packaging/homebrew/onesilo-node.rb`.
+A brewed build is **not** byte-identical to a release artifact and does not
+claim to be: the release build also injects `internal/version.Commit` from the
+git SHA, which a source tarball does not carry. Verifying released binaries is
+`scripts/verify-builds.sh`'s job.
+
+The tap is live at [onesilo/homebrew-tap](https://github.com/onesilo/homebrew-tap),
+but `brew install onesilo-node` needs a tagged release to exist — the formula
+fetches a tag archive, and its `sha256` is a placeholder until one is cut.
+Until then, build from a checkout with `make build`.
 
 Tags are still the stable versions — pin them with `go install …@v0.2.0` or
 `ghcr.io/onesilo/onesilo-node:v0.2.0`.

@@ -8,14 +8,16 @@
 # Homebrew compiles locally, nothing is quarantined, and the user gets the
 # same binary `go install` would produce, with an upgrade path.
 #
-# Staged in-repo rather than published; move to onesilo/homebrew-tap as
-# Formula/onesilo-node.rb to enable:
+# The tap is live at onesilo/homebrew-tap, which holds the authoritative copy
+# of this formula:
 #
 #   brew tap onesilo/tap && brew install onesilo-node
 #
-# Until then:
+# That command needs a real git tag to exist first — the `url` below points at
+# a tag archive and the `sha256` is a placeholder until one is cut, so this
+# file cannot be installed as-is. Build from a checkout in the meantime:
 #
-#   brew install --build-from-source ./packaging/homebrew/onesilo-node.rb
+#   go build ./cmd/onesilo-node
 class OnesiloNode < Formula
   desc "Open-source Silo node: on-device memory and compute for One Silo"
   homepage "https://github.com/onesilo/onesilo-node"
@@ -31,14 +33,26 @@ class OnesiloNode < Formula
   depends_on "go" => :build
 
   def install
+    # Go can fetch a newer toolchain mid-build when GOTOOLCHAIN=auto and the
+    # installed go is older than go.mod's requirement. Pinning to local makes
+    # the build deterministic and offline: it fails fast on too-old Go rather
+    # than quietly compiling with something nobody chose.
+    ENV["GOTOOLCHAIN"] = "local"
+    ENV["CGO_ENABLED"] = "0"
+
     ldflags = %W[
       -s -w
+      -buildid=
       -X github.com/onesilo/onesilo-node/internal/version.Version=v#{version}
     ]
-    # -trimpath matches scripts/verify-builds.sh, which asserts the release
-    # build is reproducible. Keeping the flags aligned means a Homebrew build
-    # is byte-comparable to the released one for the same commit, rather than
-    # a third variant nobody verifies.
+    # These flags match scripts/verify-builds.sh (-trimpath, -s -w -buildid=,
+    # CGO_ENABLED=0) so a brewed build isn't a third configuration nobody
+    # verifies.
+    #
+    # It is NOT byte-identical to a release artifact, and doesn't claim to be:
+    # the release build also injects version.Commit from the git SHA, which a
+    # source tarball doesn't carry. Reproducibility against released binaries
+    # is verify-builds.sh's job, not this formula's.
     system "go", "build", *std_go_args(ldflags: ldflags.join(" "), output: bin/"onesilo-node"),
            "./cmd/onesilo-node"
   end
