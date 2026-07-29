@@ -77,11 +77,33 @@ func BonjourInstanceName() string {
 
 // BonjourTXT builds the TXT record: the keys SiloMac publishes (model,
 // version, capabilities — iOS parses "model") plus an additive protocol=1.
-func BonjourTXT(model string) []string {
-	return []string{
+//
+// device_id is the same stable UUID this node registers with the control
+// plane. Publishing it here is what lets an app recognise that the machine
+// it just found on the LAN and the destination it can reach through the
+// tunnel are one device, rather than two things that happen to share a name.
+// Without it there is no shared key between the two discovery paths at all:
+// a Bonjour advert carries no device id and the destinations registry
+// carries no Bonjour host, which is why clients were reduced to matching on
+// device name — and why two machines called "MacBook Pro" collapsed into one
+// entry.
+//
+// Omitted entirely when empty rather than published as "device_id=". An
+// empty value is a value: clients grouping by it would fold every node that
+// failed to resolve an id into a single device.
+//
+// The id is a random UUID, not a user identifier, and the instance name
+// already carries the hostname — so this adds no meaningful exposure to
+// anyone already able to see the advert.
+func BonjourTXT(model, deviceID string) []string {
+	txt := []string{
 		"model=" + model,
 		"version=1.0",
 		"capabilities=chat,stream,e2e",
 		"protocol=1",
 	}
+	if deviceID != "" {
+		txt = append(txt, "device_id="+deviceID)
+	}
+	return txt
 }

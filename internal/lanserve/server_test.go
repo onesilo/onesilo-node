@@ -209,6 +209,7 @@ func TestCapabilityLifecycleAndBonjour(t *testing.T) {
 		nil,
 		nil,
 		func() string { mu.Lock(); defer mu.Unlock(); return model },
+		func() string { return "" },
 		func() []byte { return nil },
 		func() Announcer { return ann },
 		slog.New(slog.DiscardHandler),
@@ -273,6 +274,7 @@ func TestCapabilityEnabledByMemoryWithoutBonjour(t *testing.T) {
 	cap := NewCapability(
 		func() config.Config { return cfg },
 		nil, nil,
+		func() string { return "" },
 		func() string { return "" },
 		func() []byte { return nil },
 		func() Announcer { return ann },

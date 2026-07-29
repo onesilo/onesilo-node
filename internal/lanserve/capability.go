@@ -25,18 +25,20 @@ type Capability struct {
 	compute      ComputeBackend
 	apiHandler   http.Handler
 	currentModel func() string
+	deviceID     func() string
 	keySource    func() []byte
 	newAnnouncer func() Announcer
 	onClients    func(int)
 	pairer       *Pairer
 	logger       *slog.Logger
 
-	mu        sync.Mutex
-	server    *Server
-	announcer Announcer
-	published bool
-	lastModel string
-	cancel    context.CancelFunc
+	mu           sync.Mutex
+	server       *Server
+	announcer    Announcer
+	published    bool
+	lastModel    string
+	lastDeviceID string
+	cancel       context.CancelFunc
 }
 
 // NewCapability wires the LAN capability.
@@ -44,6 +46,9 @@ type Capability struct {
 //   - apiHandler serves the node HTTP APIs under /v1/ (memory, gateway
 //     relay) and may be nil.
 //   - currentModel feeds the Bonjour TXT record.
+//   - deviceID feeds the Bonjour TXT record too, letting apps match this
+//     machine's LAN advert to its control-plane destination. May be nil or
+//     return "" on a node that has no id yet; the key is then omitted.
 //   - keySource resolves the pairing key per message (see FileKeySource).
 //   - newAnnouncer is a factory so tests can inject a fake.
 func NewCapability(
@@ -51,6 +56,7 @@ func NewCapability(
 	compute ComputeBackend,
 	apiHandler http.Handler,
 	currentModel func() string,
+	deviceID func() string,
 	keySource func() []byte,
 	newAnnouncer func() Announcer,
 	logger *slog.Logger,
@@ -63,6 +69,7 @@ func NewCapability(
 		compute:      compute,
 		apiHandler:   apiHandler,
 		currentModel: currentModel,
+		deviceID:     deviceID,
 		keySource:    keySource,
 		newAnnouncer: newAnnouncer,
 		logger:       logger,
@@ -204,27 +211,37 @@ func (c *Capability) reconcileBonjourLocked() {
 	if c.currentModel != nil {
 		model = c.currentModel()
 	}
+	device := ""
+	if c.deviceID != nil {
+		device = c.deviceID()
+	}
 
 	switch {
 	case want && !c.published:
 		ann := c.newAnnouncer()
-		if err := ann.Announce(BonjourInstanceName(), c.getCfg().LAN.Port, BonjourTXT(model)); err != nil {
+		if err := ann.Announce(BonjourInstanceName(), c.getCfg().LAN.Port, BonjourTXT(model, device)); err != nil {
 			c.logger.Warn("bonjour announce failed, will retry", "error", err)
 			return
 		}
 		c.announcer = ann
 		c.published = true
 		c.lastModel = model
+		c.lastDeviceID = device
 		c.logger.Info("bonjour service published", "instance", BonjourInstanceName(), "model", model)
 	case !want && c.published:
 		c.unpublishLocked()
-	case want && c.published && model != c.lastModel:
-		if err := c.announcer.Update(BonjourTXT(model)); err != nil {
+	case want && c.published && (model != c.lastModel || device != c.lastDeviceID):
+		// The device id is tracked alongside the model because it can resolve
+		// *after* the first announce -- a node that has not yet minted or read
+		// its id publishes without the key, and would otherwise keep
+		// advertising without it until the model happened to change.
+		if err := c.announcer.Update(BonjourTXT(model, device)); err != nil {
 			c.logger.Warn("bonjour TXT update failed", "error", err)
 			return
 		}
 		c.lastModel = model
-		c.logger.Info("bonjour TXT updated", "model", model)
+		c.lastDeviceID = device
+		c.logger.Info("bonjour TXT updated", "model", model, "device_id", device)
 	}
 }
 

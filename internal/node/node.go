@@ -57,7 +57,13 @@ type Node struct {
 	nodeKey      string
 	identityKey  *ecdh.PrivateKey
 	capabilities []Capability
-	capRunning   map[string]bool
+
+	// deviceIDOnce caches the Bonjour device id. Bonjour reconciles on a
+	// refresh ticker while holding a lock, so resolving it there would put
+	// disk I/O on that path every tick for a value that never changes.
+	deviceIDOnce  sync.Once
+	deviceIDValue string
+	capRunning    map[string]bool
 
 	// startFailures remembers the last error text per retryable start
 	// (capability or tunnel), keyed as "capability:<name>" / "tunnel:quick"
@@ -177,6 +183,7 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 		n.computeCap,
 		apiMux,
 		func() string { return n.computeCap.CurrentModel() },
+		n.bonjourDeviceID,
 		lanserve.FileKeySource(func() (string, error) {
 			cfg := n.snapshot()
 			return cfg.ResolvedDataDir()
@@ -231,6 +238,35 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) 
 // uncompressed P-256 point, published to the control plane at registration.
 func (n *Node) identityPubKeyB64() string {
 	return base64.StdEncoding.EncodeToString(n.identityKey.PublicKey().Bytes())
+}
+
+// bonjourDeviceID is the stable device id advertised in the Bonjour TXT
+// record, so an app can tell that this machine's LAN advert and its
+// control-plane destination are the same device.
+//
+// Loads-or-creates rather than only reading: a LAN-only node that has never
+// registered still has an identity worth advertising, and minting it here
+// means it keeps the same id if it registers later.
+//
+// Returns "" on failure instead of propagating. A node that cannot resolve
+// its id should still be discoverable on the LAN -- clients fall back to
+// matching by name, which is what they did before this key existed.
+func (n *Node) bonjourDeviceID() string {
+	n.deviceIDOnce.Do(func() {
+		cfg := n.snapshot()
+		dataDir, err := cfg.ResolvedDataDir()
+		if err != nil {
+			n.logger.Warn("bonjour device id unavailable: resolving data dir", "error", err)
+			return
+		}
+		id, err := controlplane.LoadOrCreateDeviceID(dataDir)
+		if err != nil {
+			n.logger.Warn("bonjour device id unavailable", "error", err)
+			return
+		}
+		n.deviceIDValue = id
+	})
+	return n.deviceIDValue
 }
 
 func (n *Node) snapshot() config.Config {

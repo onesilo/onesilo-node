@@ -20,9 +20,32 @@ true:
   | `version` | `1.0` | legacy, matches SiloMac |
   | `capabilities` | `chat,stream,e2e` | legacy, matches SiloMac |
   | `protocol` | `1` | additive, onesilo-node only |
+  | `device_id` | this node's control-plane device UUID | additive; **omitted entirely** when the node cannot resolve one |
 
 A node with only the memory capability enabled runs the same HTTP server
 but does **not** publish Bonjour (there is no LLM to discover).
+
+### Why `device_id` is advertised
+
+It is the same stable UUID the node registers with the control plane
+(`<data_dir>/device_id`), and it is the only shared key between the two ways
+an app can find this machine. A Bonjour advert carries no device id and the
+destinations registry carries no Bonjour host, so before this key a client
+had to match the two by *device name* — which meant one machine reachable
+both on the LAN and through its tunnel appeared twice, and two machines
+sharing a name collapsed into one.
+
+With it, an app groups both routes under one device and can prefer the LAN
+one when it has both.
+
+Clients must treat the key as optional: nodes predating it, and nodes that
+fail to resolve an id, publish without it, and name matching remains the
+fallback. An empty value is never published — a client grouping by it would
+fold every id-less node into a single device.
+
+The value is a random UUID rather than anything about the user, and the
+instance name already carries the hostname, so publishing it tells a LAN
+observer nothing it could not already see.
 
 ## Transport
 
