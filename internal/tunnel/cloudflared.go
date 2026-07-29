@@ -43,16 +43,23 @@ func ExtractURL(output string) (string, bool) {
 	return m, m != ""
 }
 
+// searchPaths are the well-known install locations tried before $PATH.
+var searchPaths = []string{"/opt/homebrew/bin/cloudflared", "/usr/local/bin/cloudflared"}
+
 // FindBinary locates cloudflared: the configured path first, then
 // well-known Homebrew / local installs, then $PATH.
+//
+// A configured path that no longer resolves falls back to the search
+// instead of failing. The Silo Mac app pins the copy inside its own bundle
+// by absolute path, and that path goes stale whenever the app is rebuilt,
+// moved, or updated — pinning the node to a binary that isn't there any
+// more would keep the tunnel down while a perfectly good cloudflared sits
+// on $PATH. Callers report the substitution with logFallback.
 func FindBinary(configured string) (string, error) {
-	if configured != "" {
-		if isExecutable(configured) {
-			return configured, nil
-		}
-		return "", fmt.Errorf("configured cloudflared binary %s is not executable", configured)
+	if configured != "" && isExecutable(configured) {
+		return configured, nil
 	}
-	for _, c := range []string{"/opt/homebrew/bin/cloudflared", "/usr/local/bin/cloudflared"} {
+	for _, c := range searchPaths {
 		if isExecutable(c) {
 			return c, nil
 		}
@@ -60,7 +67,23 @@ func FindBinary(configured string) (string, error) {
 	if p, err := exec.LookPath("cloudflared"); err == nil {
 		return p, nil
 	}
+	if configured != "" {
+		return "", fmt.Errorf("%w; the configured binary %s is missing or not executable",
+			ErrBinaryNotFound, configured)
+	}
 	return "", ErrBinaryNotFound
+}
+
+// logFallback reports a configured cloudflared path FindBinary had to
+// ignore. Logged at the point of use so the line says which copy the
+// tunnel is actually running.
+func logFallback(logger *slog.Logger, configured, used string) {
+	if configured == "" || configured == used {
+		return
+	}
+	logger.Warn("configured cloudflared binary is missing or not executable; "+
+		"using the copy found on this system instead",
+		"configured", configured, "using", used)
 }
 
 func isExecutable(path string) bool {
@@ -194,6 +217,8 @@ func (m *Manager) spawn(ctx context.Context) (string, *exec.Cmd, error) {
 	if err != nil {
 		return "", nil, err
 	}
+
+	logFallback(m.logger, m.binaryPath, binary)
 
 	cmd := exec.Command(binary, "tunnel", "--url", fmt.Sprintf("http://localhost:%d", m.port))
 	urlCh := make(chan string, 2)

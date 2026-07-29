@@ -1,7 +1,11 @@
 package tunnel
 
 import (
+	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -93,9 +97,67 @@ func TestURLScanWriterReportsOnlyFirstURL(t *testing.T) {
 	}
 }
 
-func TestFindBinaryConfiguredMissing(t *testing.T) {
-	_, err := FindBinary("/definitely/not/a/real/cloudflared")
-	if err == nil {
-		t.Fatal("expected error for missing configured binary")
+// isolateSearch points FindBinary at an empty directory for both the
+// well-known install locations and $PATH, so the result doesn't depend on
+// whether the machine running the tests has cloudflared installed.
+func isolateSearch(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	original := searchPaths
+	searchPaths = []string{filepath.Join(dir, "cloudflared")}
+	t.Cleanup(func() { searchPaths = original })
+	t.Setenv("PATH", dir)
+	return dir
+}
+
+func TestFindBinaryConfiguredMissingWithNoFallback(t *testing.T) {
+	isolateSearch(t)
+	configured := "/definitely/not/a/real/cloudflared"
+	_, err := FindBinary(configured)
+	if !errors.Is(err, ErrBinaryNotFound) {
+		t.Fatalf("got %v, want ErrBinaryNotFound", err)
+	}
+	// The unusable configured path is the actionable half of the message.
+	if !strings.Contains(err.Error(), configured) {
+		t.Errorf("error %q does not name the configured path", err)
+	}
+}
+
+// A stale configured path — the Mac app's bundled copy after a rebuild or
+// an app update — must fall back to an installed cloudflared rather than
+// keeping the tunnel down.
+func TestFindBinaryFallsBackWhenConfiguredIsStale(t *testing.T) {
+	dir := isolateSearch(t)
+	installed := filepath.Join(dir, "cloudflared")
+	if err := os.WriteFile(installed, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := FindBinary("/definitely/not/a/real/cloudflared")
+	if err != nil {
+		t.Fatalf("FindBinary: %v", err)
+	}
+	if got != installed {
+		t.Errorf("got %q, want the installed copy %q", got, installed)
+	}
+}
+
+// A configured path that does resolve still wins over anything installed.
+func TestFindBinaryPrefersUsableConfiguredPath(t *testing.T) {
+	dir := isolateSearch(t)
+	if err := os.WriteFile(filepath.Join(dir, "cloudflared"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configured := filepath.Join(t.TempDir(), "bundled-cloudflared")
+	if err := os.WriteFile(configured, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := FindBinary(configured)
+	if err != nil {
+		t.Fatalf("FindBinary: %v", err)
+	}
+	if got != configured {
+		t.Errorf("got %q, want the configured path %q", got, configured)
 	}
 }

@@ -77,6 +77,17 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Exit with the process that spawned us, when it asked to be watched
+	// (the Silo Desktop app does). Without this an app that is killed
+	// rather than quit leaves the node orphaned, still holding the admin
+	// port the next launch needs.
+	if parentPID, ok := parentPIDFromEnv(os.LookupEnv); ok {
+		var stopWatch context.CancelFunc
+		ctx, stopWatch = watchParent(ctx, parentPID, logger)
+		defer stopWatch()
+		logger.Info("watching parent process", "parent_pid", parentPID)
+	}
+
 	if err := n.Run(ctx); err != nil {
 		logger.Error("node exited with error", "error", err)
 		return 1

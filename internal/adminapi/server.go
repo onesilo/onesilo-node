@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"github.com/onesilo/onesilo-node/internal/config"
@@ -197,6 +198,14 @@ func requireLoopbackHost(port int, next http.Handler) http.Handler {
 func (s *Server) Start() (<-chan error, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.port))
 	if err != nil {
+		// The overwhelmingly common cause is a second node — often one
+		// orphaned by a host app that was killed rather than quit — so say
+		// so instead of leaving the operator with a bare bind error.
+		if errors.Is(err, syscall.EADDRINUSE) {
+			return nil, fmt.Errorf("binding admin API on 127.0.0.1:%d: %w "+
+				"(another onesilo-node is already listening there; stop it, or set admin.port)",
+				s.port, err)
+		}
 		return nil, fmt.Errorf("binding admin API on 127.0.0.1:%d: %w", s.port, err)
 	}
 	s.logger.Info("admin API listening", "addr", ln.Addr().String())

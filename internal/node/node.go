@@ -59,6 +59,12 @@ type Node struct {
 	capabilities []Capability
 	capRunning   map[string]bool
 
+	// startFailures remembers the last error text per retryable start
+	// (capability or tunnel), keyed as "capability:<name>" / "tunnel:quick"
+	// / "tunnel:managed". Guarded by reconcileMu — only Reconcile touches
+	// it. See noteStartFailure.
+	startFailures map[string]string
+
 	jwtStore *controlplane.JWTStore
 	regMgr   *controlplane.Manager
 
@@ -84,12 +90,13 @@ type Node struct {
 // SILO_NODE_ADMIN_TOKEN; empty fails closed).
 func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) (*Node, error) {
 	n := &Node{
-		logger:     logger,
-		configPath: configPath,
-		adminToken: adminToken,
-		cfg:        cfg,
-		capRunning: map[string]bool{},
-		jwtStore:   &controlplane.JWTStore{},
+		logger:        logger,
+		configPath:    configPath,
+		adminToken:    adminToken,
+		cfg:           cfg,
+		capRunning:    map[string]bool{},
+		startFailures: map[string]string{},
+		jwtStore:      &controlplane.JWTStore{},
 	}
 
 	dataDir, err := cfg.ResolvedDataDir()
@@ -318,6 +325,39 @@ loop:
 	return nil
 }
 
+// noteStartFailure logs a start that failed but will be retried: Warn the
+// first time, and again whenever the cause changes, Debug on every repeat.
+// Reconcile runs every 30s, so a standing cause — Ollama not installed, no
+// cloudflared on the machine — would otherwise repeat the same line
+// forever and bury whatever else the log has to say.
+//
+// Callers hold reconcileMu.
+func (n *Node) noteStartFailure(key, msg string, err error, attrs ...any) {
+	text := err.Error()
+	repeat := n.startFailures[key] == text
+	n.startFailures[key] = text
+
+	attrs = append(attrs, "error", err)
+	if repeat {
+		n.logger.Debug(msg, attrs...)
+		return
+	}
+	n.logger.Warn(msg, attrs...)
+}
+
+// retryingStart reports whether this key's last start attempt failed, so
+// the caller can announce a retry more quietly than a first attempt.
+func (n *Node) retryingStart(key string) bool {
+	_, failed := n.startFailures[key]
+	return failed
+}
+
+// clearStartFailure forgets a remembered failure, so the next one is
+// warned about rather than treated as a repeat.
+func (n *Node) clearStartFailure(key string) {
+	delete(n.startFailures, key)
+}
+
 // Reconcile applies the live config: starts/stops capabilities and the
 // tunnel, and updates the registration manager's desired state. Safe to
 // call from the admin API and the periodic ticker concurrently.
@@ -329,13 +369,28 @@ func (n *Node) Reconcile(ctx context.Context) {
 
 	for _, c := range n.capabilities {
 		name := c.Name()
+		key := "capability:" + name
+		// Turning something off ends the retry loop, so forget what it was
+		// failing with. Otherwise switching it back on later hits the
+		// suppression path on its very first attempt and the failure that
+		// matters arrives at debug level. (The stop branch below can't do
+		// this: a capability that never started isn't running, so neither
+		// branch of the switch runs for it.)
+		if !c.Enabled() {
+			n.clearStartFailure(key)
+		}
 		switch {
 		case c.Enabled() && !n.capRunning[name]:
-			n.logger.Info("starting capability", "capability", name)
+			if n.retryingStart(key) {
+				n.logger.Debug("retrying capability start", "capability", name)
+			} else {
+				n.logger.Info("starting capability", "capability", name)
+			}
 			if err := c.Start(ctx); err != nil {
-				n.logger.Warn("capability start failed, will retry", "capability", name, "error", err)
+				n.noteStartFailure(key, "capability start failed, will retry", err, "capability", name)
 				continue
 			}
+			n.clearStartFailure(key)
 			n.capRunning[name] = true
 		case !c.Enabled() && n.capRunning[name]:
 			n.logger.Info("stopping capability", "capability", name)
@@ -364,14 +419,18 @@ func (n *Node) Reconcile(ctx context.Context) {
 
 	// Quick tunnel: run only while exposed and a capability needs serving.
 	wantQuick := exposed && cfg.Tunnel.Mode == config.TunnelModeQuick && anyEnabled
+	if !wantQuick {
+		n.clearStartFailure("tunnel:quick") // same reasoning as capabilities
+	}
 	n.tunnelMu.Lock()
 	running := n.tunnelMgr != nil
 	if wantQuick && !running {
 		mgr := tunnel.New(cfg.LAN.Port, cfg.Tunnel.CloudflaredPath,
 			n.logger.With("component", "tunnel"), n.onTunnelURLChange)
 		if err := mgr.Start(n.runCtx); err != nil {
-			n.logger.Warn("tunnel start failed, will retry", "error", err)
+			n.noteStartFailure("tunnel:quick", "tunnel start failed, will retry", err)
 		} else {
+			n.clearStartFailure("tunnel:quick")
 			n.tunnelMgr = mgr
 		}
 	} else if !wantQuick && running {
@@ -386,14 +445,18 @@ func (n *Node) Reconcile(ctx context.Context) {
 	// Managed tunnel: same lifecycle, but the control plane provisions a
 	// stable named tunnel and the URL comes from the provision response.
 	wantManaged := exposed && cfg.Tunnel.Mode == config.TunnelModeManaged && anyEnabled
+	if !wantManaged {
+		n.clearStartFailure("tunnel:managed")
+	}
 	n.tunnelMu.Lock()
 	managedRunning := n.managedMgr != nil
 	if wantManaged && !managedRunning {
 		mgr := tunnel.NewManaged(n.provisionManagedTunnel, cfg.Tunnel.CloudflaredPath,
 			n.logger.With("component", "tunnel"), n.onManagedURLChange)
 		if err := mgr.Start(n.runCtx); err != nil {
-			n.logger.Warn("managed tunnel start failed, will retry", "error", err)
+			n.noteStartFailure("tunnel:managed", "managed tunnel start failed, will retry", err)
 		} else {
+			n.clearStartFailure("tunnel:managed")
 			n.managedMgr = mgr
 		}
 	} else if !wantManaged && managedRunning {
