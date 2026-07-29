@@ -78,6 +78,7 @@ pick by where it is running:
 
 | Method | Best for | What it takes |
 |---|---|---|
+| **Homebrew** | a Mac or Linux workstation | `brew tap onesilo/tap && brew install onesilo-node` — builds from source, then `onesilo-node setup`. |
 | **Docker** | a NAS, a home server, anything long-running | A reproducible distroless image and a compose file with an Ollama sidecar — see [docs/deploy-docker.md](docs/deploy-docker.md). |
 | **From source** | hacking on it, or a machine you already develop on | `make build` (see [Quickstart](#quickstart)). |
 | **`go install`** | the quickest start if you already have Go | `go install github.com/onesilo/onesilo-node/cmd/onesilo-node@latest` |
@@ -94,6 +95,17 @@ filename, and is reproducible with its build provenance attested. Shipping
 loose binaries as well would add the one artifact we could not stand behind
 without also becoming an Apple-notarized distributor, which is what Silo
 Desktop is for.
+
+The Homebrew formula is not an exception to that. It **builds from source**
+rather than fetching a prebuilt binary, so nothing is downloaded that
+Gatekeeper would quarantine — you get the same binary `go install` produces,
+with an upgrade path. Its flags are kept aligned with
+`scripts/verify-builds.sh`, so a brewed build stays byte-comparable to the
+released one for the same commit rather than becoming a third variant nobody
+checks.
+
+The tap is not published yet. Until it is, build the formula from a
+checkout: `brew install --build-from-source ./packaging/homebrew/onesilo-node.rb`.
 
 Tags are still the stable versions — pin them with `go install …@v0.2.0` or
 `ghcr.io/onesilo/onesilo-node:v0.2.0`.
