@@ -370,6 +370,15 @@ func (n *Node) Reconcile(ctx context.Context) {
 	for _, c := range n.capabilities {
 		name := c.Name()
 		key := "capability:" + name
+		// Turning something off ends the retry loop, so forget what it was
+		// failing with. Otherwise switching it back on later hits the
+		// suppression path on its very first attempt and the failure that
+		// matters arrives at debug level. (The stop branch below can't do
+		// this: a capability that never started isn't running, so neither
+		// branch of the switch runs for it.)
+		if !c.Enabled() {
+			n.clearStartFailure(key)
+		}
 		switch {
 		case c.Enabled() && !n.capRunning[name]:
 			if n.retryingStart(key) {
@@ -410,6 +419,9 @@ func (n *Node) Reconcile(ctx context.Context) {
 
 	// Quick tunnel: run only while exposed and a capability needs serving.
 	wantQuick := exposed && cfg.Tunnel.Mode == config.TunnelModeQuick && anyEnabled
+	if !wantQuick {
+		n.clearStartFailure("tunnel:quick") // same reasoning as capabilities
+	}
 	n.tunnelMu.Lock()
 	running := n.tunnelMgr != nil
 	if wantQuick && !running {
@@ -433,6 +445,9 @@ func (n *Node) Reconcile(ctx context.Context) {
 	// Managed tunnel: same lifecycle, but the control plane provisions a
 	// stable named tunnel and the URL comes from the provision response.
 	wantManaged := exposed && cfg.Tunnel.Mode == config.TunnelModeManaged && anyEnabled
+	if !wantManaged {
+		n.clearStartFailure("tunnel:managed")
+	}
 	n.tunnelMu.Lock()
 	managedRunning := n.managedMgr != nil
 	if wantManaged && !managedRunning {
