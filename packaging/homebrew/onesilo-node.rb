@@ -13,16 +13,16 @@
 #
 #   brew tap onesilo/tap && brew install onesilo-node
 #
-# That command needs a real git tag to exist first — the `url` below points at
-# a tag archive and the `sha256` is a placeholder until one is cut, so this
-# file cannot be installed as-is. Build from a checkout in the meantime:
+# The `url` below points at a tag archive; bump it and the `sha256` together on
+# every release. The checksum is of GitHub's generated tarball for the tag:
 #
-#   go build ./cmd/onesilo-node
+#   curl -sL https://github.com/onesilo/onesilo-node/archive/refs/tags/vX.Y.Z.tar.gz \
+#     | shasum -a 256
 class OnesiloNode < Formula
   desc "Open-source Silo node: on-device memory and compute for One Silo"
   homepage "https://github.com/onesilo/onesilo-node"
-  url "https://github.com/onesilo/onesilo-node/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  url "https://github.com/onesilo/onesilo-node/archive/refs/tags/v0.1.0.tar.gz"
+  sha256 "9512db188116b25ce149f64f7c3090aa572eeb88ec4995b4f0f662b45cf0bf10"
   license "Apache-2.0"
   head "https://github.com/onesilo/onesilo-node.git", branch: "main"
 
