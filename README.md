@@ -109,13 +109,14 @@ claim to be: the release build also injects `internal/version.Commit` from the
 git SHA, which a source tarball does not carry. Verifying released binaries is
 `scripts/verify-builds.sh`'s job.
 
-The tap is live at [onesilo/homebrew-tap](https://github.com/onesilo/homebrew-tap),
-but `brew install onesilo-node` needs a tagged release to exist — the formula
-fetches a tag archive, and its `sha256` is a placeholder until one is cut.
-Until then, build from a checkout with `make build`.
+The tap is live at [onesilo/homebrew-tap](https://github.com/onesilo/homebrew-tap):
 
-Tags are still the stable versions — pin them with `go install …@v0.2.0` or
-`ghcr.io/onesilo/onesilo-node:v0.2.0`.
+```bash
+brew tap onesilo/tap && brew install onesilo-node
+```
+
+Tags are still the stable versions — pin them with `go install …@v0.1.0` or
+`ghcr.io/onesilo/onesilo-node:v0.1.0`.
 
 ## Quickstart
 
