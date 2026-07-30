@@ -78,7 +78,7 @@ pick by where it is running:
 
 | Method | Best for | What it takes |
 |---|---|---|
-| **Homebrew** | a Mac or Linux workstation | `brew tap onesilo/tap && brew install onesilo-node` — builds from source, then `onesilo-node setup`. Needs a tagged release; see below. |
+| **Homebrew** | a Mac or Linux workstation | `brew tap onesilo/tap`, `brew trust --formula onesilo/tap/onesilo-node`, `brew install onesilo-node` — builds from source, then `onesilo-node setup`. See below for why the trust step is required. |
 | **Docker** | a NAS, a home server, anything long-running | A reproducible distroless image and a compose file with an Ollama sidecar — see [docs/deploy-docker.md](docs/deploy-docker.md). |
 | **From source** | hacking on it, or a machine you already develop on | `make build` (see [Quickstart](#quickstart)). |
 | **`go install`** | the quickest start if you already have Go | `go install github.com/onesilo/onesilo-node/cmd/onesilo-node@latest` |
@@ -112,8 +112,29 @@ git SHA, which a source tarball does not carry. Verifying released binaries is
 The tap is live at [onesilo/homebrew-tap](https://github.com/onesilo/homebrew-tap):
 
 ```bash
-brew tap onesilo/tap && brew install onesilo-node
+brew tap onesilo/tap
+brew trust --formula onesilo/tap/onesilo-node
+brew install onesilo-node
 ```
+
+The `trust` step is not optional on current Homebrew: it refuses to load
+formulae from third-party taps until you trust them, so without it `install`
+stops at *"Refusing to load formula … from untrusted tap"*. Trusting the
+single formula is narrower than `brew trust onesilo/tap`, which also covers
+anything the tap ships in future.
+
+Because the formula compiles rather than pouring a bottle, Homebrew enforces
+its floor for source builds and will refuse to continue on an outdated Xcode
+or Command Line Tools. A current Xcode is often already installed but not
+selected, so check that first:
+
+```bash
+xcode-select -p
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+```
+
+If it still reports outdated Command Line Tools:
+`sudo rm -rf /Library/Developer/CommandLineTools && sudo xcode-select --install`.
 
 Tags are still the stable versions — pin them with `go install …@v0.1.0` or
 `ghcr.io/onesilo/onesilo-node:v0.1.0`.
