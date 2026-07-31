@@ -4,6 +4,18 @@
 
 const TOKEN_KEY = "onesilo-node-admin-token";
 
+// One-time token handoff from `onesilo-node setup`: the control panel opens
+// /#token=<hex> so the operator lands signed in instead of pasting the
+// token. The fragment never leaves the browser (it is not sent with any
+// request); consume it and scrub it from the URL and history immediately.
+{
+  const handoff = location.hash.match(/^#token=([A-Za-z0-9._~-]+)$/);
+  if (handoff) {
+    localStorage.setItem(TOKEN_KEY, handoff[1]);
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+}
+
 const $ = (sel, el) => (el || document).querySelector(sel);
 const main = $("#main");
 

@@ -6,7 +6,8 @@ NAS — that serves memory and LLM traffic from your own hardware.
 
 ## Modes & remote access
 
-A node has **two independent axes**, both chosen by the setup wizard:
+A node has **two independent axes**, both switchable from the setup control
+panel:
 
 **Mode** (`mode` in the config) — what the node *relays*:
 
@@ -143,39 +144,52 @@ Tags are still the stable versions — pin them with `go install …@v0.1.0` or
 
 ```bash
 make build              # Go 1.25+
-./bin/onesilo-node setup   # interactive wizard (or `setup -yes` for defaults)
-
-export SILO_API_KEY="sc_..."   # only if the node relays or is exposed — from your Silo account
-./bin/onesilo-node
+./bin/onesilo-node setup   # launches the node + control panel (or `setup -yes` for headless init)
 ```
 
-`setup` asks for what it needs and provisions the rest:
+`setup` launches the node with default settings — a **Local Node** with
+Compute, Memory, and LAN discovery on — and drops you into a control panel:
 
-- asks which **mode** the node runs in — `local` (private, the default) or
-  `gateway` (One Silo relay) — and branches the remaining steps on it;
-- generates the admin API token at `~/.onesilo-node/admin.token` (0600) —
-  loaded automatically at start, no env var needed
-  (`SILO_NODE_ADMIN_TOKEN` still wins when set);
-- finds a running Ollama server or an existing install; when there is
-  neither, it downloads the official Ollama release into the data dir and
-  pulls the default model, so compute works with nothing pre-installed;
-- optionally enables device memory (pulling the embedding model for hybrid
-  recall);
-- asks whether to **enable remote access** — a Cloudflare quick tunnel
-  (downloading cloudflared the same way) that makes this node reachable from
-  your authenticated apps anywhere. Available for a Local Node or a Local
-  Relay;
-- for a relay or an exposed node, **signs you in to One
-  Silo** — a browser OAuth flow, after which the node holds its own
-  refreshable credential (`~/.onesilo-node/oauth.json`, 0600) and appears in
-  your [dashboard connections](https://dashboard.onesilo.com/connections),
-  just like the Silo iOS app. No account yet? The wizard points you to
-  [onesilo.com](https://onesilo.com) to create one. An `sc_` API key
-  remains the headless fallback;
-- writes it all to `~/.onesilo-node/config.toml`.
+```
+Welcome to One Silo Node
 
-Re-running `setup` is safe — it keeps previous choices as defaults. Check
-the running node:
+Current Configuration:
+  Mode:          Local
+  Capabilities:  Compute, Memory, LAN
+
+  1. Launch Admin Interface (127.0.0.1:8766)
+  2. Switch to Local Relay
+  3. Enable access from anywhere
+  q. Quit (stops the node)
+```
+
+On first run it bootstraps what a working node can't do silently: it
+generates the admin API token at `~/.onesilo-node/admin.token` (0600, loaded
+automatically at start; `SILO_NODE_ADMIN_TOKEN` still wins when set), finds
+a running Ollama server or an existing install — downloading the official
+release into the data dir and pulling the default and embedding models when
+there is neither — and writes `~/.onesilo-node/config.toml`.
+
+The panel drives the running node live (changes persist to the config and
+apply without a restart):
+
+- **Launch Admin Interface** opens the browser signed in — models, silos,
+  pairing approvals, and every setting live there;
+- **Switch to Local Relay / Local Node** flips the mode axis. Becoming a
+  relay signs you in to One Silo first — a browser OAuth flow, after which
+  the node holds its own refreshable credential
+  (`~/.onesilo-node/oauth.json`, 0600) and appears in your
+  [dashboard connections](https://dashboard.onesilo.com/connections), just
+  like the Silo iOS app;
+- **Enable access from anywhere** flips the remote-access axis: it pairs
+  with the control plane the same way when needed, downloads cloudflared if
+  missing, and asks One Silo to provision a stable hostname for this node
+  (requires a subscription — running the node locally is always free).
+
+Re-running `setup` is safe and fast — an existing config is respected, and
+`onesilo-node` without arguments still runs the node headless (Docker,
+services, scripts; use an `sc_` API key via `SILO_API_KEY` there instead of
+the browser sign-in). Check the running node:
 
 ```bash
 curl -s -H "Authorization: Bearer $(cat ~/.onesilo-node/admin.token)" \

@@ -261,26 +261,3 @@ func TestPrompterConfirm(t *testing.T) {
 	}
 }
 
-func TestPrompterChoose(t *testing.T) {
-	opts := []string{"Local Node", "Local Relay"}
-	pick := func(input string, def int) int {
-		p := &prompter{in: bufio.NewReader(strings.NewReader(input)), out: &bytes.Buffer{}}
-		return p.choose("q?", opts, def)
-	}
-	if pick("1\n", 2) != 1 || pick("2\n", 1) != 2 {
-		t.Error("explicit selection must win over the default")
-	}
-	if pick("\n", 2) != 2 {
-		t.Error("enter must take the default")
-	}
-	if pick("9\nx\n1\n", 2) != 1 {
-		t.Error("out-of-range/garbage should re-prompt")
-	}
-	if pick("", 1) != 1 {
-		t.Error("EOF must take the default")
-	}
-	yes := &prompter{in: bufio.NewReader(strings.NewReader("1\n")), out: &bytes.Buffer{}, assumeYes: true}
-	if yes.choose("q?", opts, 2) != 2 {
-		t.Error("assumeYes must take the default without reading stdin")
-	}
-}
