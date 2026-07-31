@@ -260,4 +260,3 @@ func TestPrompterConfirm(t *testing.T) {
 		t.Error("assumeYes must take the default without reading stdin")
 	}
 }
-
