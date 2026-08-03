@@ -52,7 +52,11 @@ func run(args []string) int {
 		return 1
 	}
 
-	logger := logging.New(cfg.Log)
+	// Logs go to stderr as always, and are also retained in memory so the
+	// admin UI can show a live console — the only view an operator has when
+	// the node runs under a supervisor that swallows stderr.
+	logRecorder := logging.NewRecorder(logging.DefaultRecorderCapacity)
+	logger := logging.NewRecording(cfg.Log, os.Stderr, logRecorder)
 
 	// Admin token: SILO_NODE_ADMIN_TOKEN wins; otherwise the token file
 	// written by `onesilo-node setup` is loaded.
@@ -68,7 +72,7 @@ func run(args []string) int {
 		logger.Info("admin token loaded", "path", filepath.Join(dataDir, adminTokenFile))
 	}
 
-	n, err := node.New(cfg, path, adminToken, logger)
+	n, err := node.New(cfg, path, adminToken, logger, logRecorder)
 	if err != nil {
 		logger.Error("startup failed", "error", err)
 		return 1

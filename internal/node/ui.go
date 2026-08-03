@@ -135,3 +135,15 @@ func (n *Node) StartPull(model string) error {
 	}()
 	return nil
 }
+
+// adminapi.LogController implementation: the live console.
+
+// LogBacklog implements adminapi.LogController.
+func (n *Node) LogBacklog() []string {
+	return n.logs.Backlog()
+}
+
+// SubscribeLogs implements adminapi.LogController.
+func (n *Node) SubscribeLogs() (<-chan string, func()) {
+	return n.logs.Subscribe(0)
+}

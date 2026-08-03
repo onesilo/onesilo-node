@@ -19,6 +19,11 @@ func New(cfg config.Log) *slog.Logger {
 // panel uses it to send node logs to a file so they don't scribble over
 // the interactive screen.
 func NewWithWriter(cfg config.Log, w io.Writer) *slog.Logger {
+	return slog.New(handlerFor(cfg, w, handlerOptions(cfg)))
+}
+
+// handlerOptions maps the configured level onto slog's.
+func handlerOptions(cfg config.Log) *slog.HandlerOptions {
 	level := slog.LevelInfo
 	switch strings.ToLower(cfg.Level) {
 	case "debug":
@@ -30,13 +35,13 @@ func NewWithWriter(cfg config.Log, w io.Writer) *slog.Logger {
 	case "error":
 		level = slog.LevelError
 	}
+	return &slog.HandlerOptions{Level: level}
+}
 
-	opts := &slog.HandlerOptions{Level: level}
-	var handler slog.Handler
+// handlerFor builds the configured-format handler over w.
+func handlerFor(cfg config.Log, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 	if cfg.Format == "json" {
-		handler = slog.NewJSONHandler(w, opts)
-	} else {
-		handler = slog.NewTextHandler(w, opts)
+		return slog.NewJSONHandler(w, opts)
 	}
-	return slog.New(handler)
+	return slog.NewTextHandler(w, opts)
 }
