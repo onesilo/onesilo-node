@@ -29,15 +29,28 @@ const DefaultRecorderCapacity = 1000
 // like a node whose console is simply empty, rather than panicking.
 type Recorder struct {
 	mu       sync.Mutex
-	ring     []string
-	next     int // write cursor into ring
-	filled   int // entries written, capped at len(ring)
+	ring     []Record
+	next     int    // write cursor into ring
+	filled   int    // entries written, capped at len(ring)
+	seq      uint64 // last assigned sequence number
 	subs     map[int]*subscriber
 	nextSubI int
 }
 
+// Record is one recorded log line and its position in the log.
+//
+// Seq is a monotonic counter starting at 1. It exists so a consumer that
+// reads the backlog and subscribes to new records can tell which of the
+// records it receives it has already seen — matching on the line's text
+// cannot, because two identical messages logged twice are a legitimate
+// thing for a program to do.
+type Record struct {
+	Seq  uint64
+	Line string
+}
+
 type subscriber struct {
-	ch chan string
+	ch chan Record
 	// dropped counts records skipped because ch was full. Reported to the
 	// subscriber on the next successful send rather than swallowed — a
 	// console with silent gaps is worse than one that admits to them.
@@ -50,7 +63,7 @@ func NewRecorder(capacity int) *Recorder {
 		capacity = DefaultRecorderCapacity
 	}
 	return &Recorder{
-		ring: make([]string, capacity),
+		ring: make([]Record, capacity),
 		subs: map[int]*subscriber{},
 	}
 }
@@ -68,30 +81,34 @@ func (r *Recorder) Write(p []byte) (int, error) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.ring[r.next] = line
+	r.seq++
+	rec := Record{Seq: r.seq, Line: line}
+	r.ring[r.next] = rec
 	r.next = (r.next + 1) % len(r.ring)
 	if r.filled < len(r.ring) {
 		r.filled++
 	}
 	for _, s := range r.subs {
-		s.send(line)
+		s.send(rec)
 	}
 	return len(p), nil
 }
 
 // send delivers without ever blocking the logger: a stalled console must
 // not be able to wedge the node.
-func (s *subscriber) send(line string) {
+func (s *subscriber) send(rec Record) {
 	if s.dropped > 0 {
 		// Try to confess the gap first; if that doesn't fit either, keep
-		// counting and try again on the next record.
+		// counting and try again on the next record. The notice borrows the
+		// sequence number of the record it precedes so a consumer filtering
+		// on Seq treats it like any other live record.
 		notice, _ := json.Marshal(map[string]any{
 			"level":   "WARN",
 			"msg":     "log console fell behind; some lines were dropped",
 			"dropped": s.dropped,
 		})
 		select {
-		case s.ch <- string(notice):
+		case s.ch <- Record{Seq: rec.Seq, Line: string(notice)}:
 			s.dropped = 0
 		default:
 			s.dropped++
@@ -99,20 +116,20 @@ func (s *subscriber) send(line string) {
 		}
 	}
 	select {
-	case s.ch <- line:
+	case s.ch <- rec:
 	default:
 		s.dropped++
 	}
 }
 
 // Backlog returns the retained records, oldest first.
-func (r *Recorder) Backlog() []string {
+func (r *Recorder) Backlog() []Record {
 	if r == nil {
 		return nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]string, 0, r.filled)
+	out := make([]Record, 0, r.filled)
 	start := 0
 	if r.filled == len(r.ring) {
 		start = r.next // ring is full: oldest sits at the write cursor
@@ -126,11 +143,15 @@ func (r *Recorder) Backlog() []string {
 // Subscribe returns a channel of records written from now on, plus a cancel
 // function. Cancel must be called (defer it) or the subscription leaks.
 // Records that don't fit in the buffer are dropped, not blocked on.
-func (r *Recorder) Subscribe(buffer int) (<-chan string, func()) {
+//
+// The channel closes only on cancel, including for a nil recorder: a node
+// without one has a console with nothing in it, which is not the same
+// thing as a console whose connection died.
+func (r *Recorder) Subscribe(buffer int) (<-chan Record, func()) {
 	if r == nil {
-		ch := make(chan string)
-		close(ch)
-		return ch, func() {}
+		ch := make(chan Record)
+		var once sync.Once
+		return ch, func() { once.Do(func() { close(ch) }) }
 	}
 	if buffer <= 0 {
 		buffer = 256
@@ -139,7 +160,7 @@ func (r *Recorder) Subscribe(buffer int) (<-chan string, func()) {
 	defer r.mu.Unlock()
 	id := r.nextSubI
 	r.nextSubI++
-	sub := &subscriber{ch: make(chan string, buffer)}
+	sub := &subscriber{ch: make(chan Record, buffer)}
 	r.subs[id] = sub
 	return sub.ch, func() {
 		r.mu.Lock()

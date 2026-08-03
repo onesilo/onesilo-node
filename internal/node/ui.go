@@ -8,6 +8,7 @@ import (
 
 	"github.com/onesilo/onesilo-node/internal/adminapi"
 	"github.com/onesilo/onesilo-node/internal/compute/ollama"
+	"github.com/onesilo/onesilo-node/internal/logging"
 	"github.com/onesilo/onesilo-node/internal/siloexport"
 )
 
@@ -139,11 +140,11 @@ func (n *Node) StartPull(model string) error {
 // adminapi.LogController implementation: the live console.
 
 // LogBacklog implements adminapi.LogController.
-func (n *Node) LogBacklog() []string {
+func (n *Node) LogBacklog() []logging.Record {
 	return n.logs.Backlog()
 }
 
 // SubscribeLogs implements adminapi.LogController.
-func (n *Node) SubscribeLogs() (<-chan string, func()) {
+func (n *Node) SubscribeLogs() (<-chan logging.Record, func()) {
 	return n.logs.Subscribe(0)
 }

@@ -3,6 +3,7 @@ package adminapi
 import (
 	"bufio"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/onesilo/onesilo-node/internal/logging"
 )
 
 // fakeLogController layers LogController onto fakeController.
@@ -17,22 +20,44 @@ type fakeLogController struct {
 	fakeController
 
 	mu       sync.Mutex
-	backlog  []string
-	live     chan string
+	backlog  []logging.Record
+	live     chan logging.Record
+	seq      uint64
 	canceled bool
 }
 
+// newFakeLogs numbers the backlog 1..n, as a real recorder would.
 func newFakeLogs(backlog ...string) *fakeLogController {
-	return &fakeLogController{backlog: backlog, live: make(chan string, 8)}
+	f := &fakeLogController{live: make(chan logging.Record, 8)}
+	for _, line := range backlog {
+		f.seq++
+		f.backlog = append(f.backlog, logging.Record{Seq: f.seq, Line: line})
+	}
+	return f
 }
 
-func (f *fakeLogController) LogBacklog() []string {
+// emit queues a live record continuing the sequence.
+func (f *fakeLogController) emit(line string) {
+	f.mu.Lock()
+	f.seq++
+	rec := logging.Record{Seq: f.seq, Line: line}
+	f.mu.Unlock()
+	f.live <- rec
+}
+
+// replay queues a record the backlog already carried, as the subscribe→
+// backlog overlap produces.
+func (f *fakeLogController) replay(seq uint64, line string) {
+	f.live <- logging.Record{Seq: seq, Line: line}
+}
+
+func (f *fakeLogController) LogBacklog() []logging.Record {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]string(nil), f.backlog...)
+	return append([]logging.Record(nil), f.backlog...)
 }
 
-func (f *fakeLogController) SubscribeLogs() (<-chan string, func()) {
+func (f *fakeLogController) SubscribeLogs() (<-chan logging.Record, func()) {
 	return f.live, func() {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -110,7 +135,7 @@ func TestLogStreamSendsBacklogThenLive(t *testing.T) {
 	expectLine(t, lines, `{"msg":"first"}`)
 	expectLine(t, lines, `{"msg":"second"}`)
 
-	ctrl.live <- `{"msg":"third"}`
+	ctrl.emit(`{"msg":"third"}`)
 	expectLine(t, lines, `{"msg":"third"}`)
 }
 
@@ -122,9 +147,10 @@ func TestLogStreamDoesNotDuplicateTheOverlap(t *testing.T) {
 	srv := httptest.NewServer(newMux("tok", ctrl, slog.Default()))
 	defer srv.Close()
 
-	// "b" was captured by both paths, as a real overlap would be.
-	ctrl.live <- `{"msg":"b"}`
-	ctrl.live <- `{"msg":"c"}`
+	// "b" was captured by both paths, as a real overlap would be: same
+	// record, same sequence number, delivered twice.
+	ctrl.replay(2, `{"msg":"b"}`)
+	ctrl.emit(`{"msg":"c"}`)
 
 	lines, stop := streamLines(t, srv, "tok")
 	defer stop()
@@ -199,14 +225,57 @@ func TestLogStreamCannotBeSplitByANewlineInARecord(t *testing.T) {
 		}
 		event = append(event, sc.Text())
 	}
-	if len(event) != 2 {
-		t.Fatalf("want the record split across two data lines, got %v", event)
+	// An `id:` line plus one `data:` per line of the payload.
+	if len(event) != 3 || event[0] != "id: 1" {
+		t.Fatalf("want an id line and two data lines, got %v", event)
 	}
-	for _, line := range event {
+	for _, line := range event[1:] {
 		if !strings.HasPrefix(line, "data: ") {
 			t.Fatalf("a payload line escaped the data prefix: %q", line)
 		}
 	}
+}
+
+func TestLogStreamKeepsRepeatedIdenticalLines(t *testing.T) {
+	// A program logging the same message twice is not a duplicate. Overlap
+	// suppression keys off the sequence number precisely so identical text
+	// cannot make a real line vanish from the live tail.
+	ctrl := newFakeLogs(`{"msg":"reconcile"}`)
+	srv := httptest.NewServer(newMux("tok", ctrl, slog.Default()))
+	defer srv.Close()
+
+	lines, stop := streamLines(t, srv, "tok")
+	defer stop()
+	expectLine(t, lines, `{"msg":"reconcile"}`)
+
+	ctrl.emit(`{"msg":"reconcile"}`) // same text, later record
+	expectLine(t, lines, `{"msg":"reconcile"}`)
+	ctrl.emit(`{"msg":"reconcile"}`)
+	expectLine(t, lines, `{"msg":"reconcile"}`)
+}
+
+func TestLogStreamStaysOpenWithNothingToShow(t *testing.T) {
+	// A controller with no records must give a live-but-empty console, not
+	// a stream that ends the moment it opens — those look identical to the
+	// operator otherwise, and one of them reads as broken.
+	ctrl := newFakeLogs()
+	srv := httptest.NewServer(newMux("tok", ctrl, slog.Default()))
+	defer srv.Close()
+
+	lines, stop := streamLines(t, srv, "tok")
+	defer stop()
+
+	select {
+	case _, open := <-lines:
+		if !open {
+			t.Fatal("the stream ended instead of waiting for records")
+		}
+	case <-time.After(200 * time.Millisecond):
+		// Still open with nothing to say: correct.
+	}
+
+	ctrl.emit(`{"msg":"finally"}`)
+	expectLine(t, lines, `{"msg":"finally"}`)
 }
 
 func TestLogRoutesAbsentWithoutALogController(t *testing.T) {
@@ -224,5 +293,56 @@ func TestLogRoutesAbsentWithoutALogController(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("want 404 when logs are unavailable, got %d", res.StatusCode)
+	}
+}
+
+// failingWriter is a ResponseWriter whose body writes fail from the start,
+// standing in for a connection the peer has already dropped.
+type failingWriter struct {
+	header http.Header
+	status int
+	writes int
+}
+
+func (f *failingWriter) Header() http.Header {
+	if f.header == nil {
+		f.header = http.Header{}
+	}
+	return f.header
+}
+func (f *failingWriter) WriteHeader(code int) { f.status = code }
+func (f *failingWriter) Write(p []byte) (int, error) {
+	f.writes++
+	return 0, errors.New("connection reset by peer")
+}
+func (f *failingWriter) Flush() {}
+
+func TestLogStreamGivesUpWhenWritesFail(t *testing.T) {
+	// Request-context cancellation usually ends the handler, but a failed
+	// write is the earlier and more direct signal. Ignoring it would leave
+	// the loop writing into a dead connection until something else noticed.
+	ctrl := newFakeLogs(`{"msg":"a"}`, `{"msg":"b"}`, `{"msg":"c"}`)
+	mux := newMux("tok", ctrl, slog.Default())
+
+	req := httptest.NewRequest("GET", "/v1/logs/stream", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	w := &failingWriter{}
+
+	done := make(chan struct{})
+	go func() {
+		mux.ServeHTTP(w, req)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the handler kept going after the connection died")
+	}
+	if w.writes != 1 {
+		t.Fatalf("want the handler to stop on the first failed write, got %d writes", w.writes)
+	}
+	if !ctrl.wasCanceled() {
+		t.Fatal("the subscription should be released when the handler exits")
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/onesilo/onesilo-node/internal/logging"
 )
 
 // keepaliveInterval bounds how long the console can sit silent before the
@@ -13,14 +15,15 @@ import (
 const keepaliveInterval = 25 * time.Second
 
 // LogController is the extra surface behind the live log console.
-// Implemented by *node.Node; each record is one JSON object as written by
-// the node's slog JSON handler.
+// Implemented by *node.Node; each record's Line is one JSON object as
+// written by the node's slog JSON handler.
 type LogController interface {
 	// LogBacklog returns the retained recent records, oldest first.
-	LogBacklog() []string
+	LogBacklog() []logging.Record
 	// SubscribeLogs returns records written from now on plus a cancel
-	// function that must be called when the caller is done.
-	SubscribeLogs() (<-chan string, func())
+	// function that must be called when the caller is done. The channel
+	// closes only on cancel.
+	SubscribeLogs() (<-chan logging.Record, func())
 }
 
 // registerLogRoutes mounts GET /v1/logs/stream when the controller can
@@ -60,14 +63,17 @@ func registerLogRoutes(authed func(string, http.HandlerFunc), ctrl Controller) {
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 
-		// Subscribing first means the earliest live records may duplicate
-		// the tail of the backlog. Sequence numbers would be the general
-		// fix; for a console, dropping an exact repeat of a line we just
-		// sent is simpler and indistinguishable in the output.
-		seen := map[string]bool{}
-		for _, line := range backlog {
-			seen[line] = true
-			writeSSE(w, line)
+		// Subscribing first means the earliest live records may repeat the
+		// tail of the backlog. Sequence numbers settle it exactly: anything
+		// at or below the last record the backlog already delivered has
+		// been sent. Matching on the line's text could not — a program
+		// logging the same message twice is not a duplicate.
+		var lastSent uint64
+		for _, rec := range backlog {
+			lastSent = rec.Seq
+			if err := writeSSE(w, rec); err != nil {
+				return
+			}
 		}
 		flusher.Flush()
 
@@ -77,16 +83,20 @@ func registerLogRoutes(authed func(string, http.HandlerFunc), ctrl Controller) {
 			select {
 			case <-r.Context().Done():
 				return
-			case line, open := <-stream:
+			case rec, open := <-stream:
 				if !open {
 					return
 				}
-				if seen[line] {
-					delete(seen, line)
-					continue
+				if rec.Seq <= lastSent {
+					continue // already delivered from the backlog
 				}
-				seen = nil // past the overlap window; stop tracking
-				writeSSE(w, line)
+				lastSent = rec.Seq
+				if err := writeSSE(w, rec); err != nil {
+					// The client is gone. Request-context cancellation
+					// normally gets here first, but a failed write is the
+					// earlier and more direct signal.
+					return
+				}
 				flusher.Flush()
 			case <-keepalive.C:
 				// An SSE comment: ignored by the parser, but it fails the
@@ -100,12 +110,23 @@ func registerLogRoutes(authed func(string, http.HandlerFunc), ctrl Controller) {
 	})
 }
 
-// writeSSE emits one record as an SSE `data:` event. Records are single-line
-// JSON, but a newline in the payload would end the event early and let a
-// crafted log field forge a second one — so every line is prefixed.
-func writeSSE(w http.ResponseWriter, payload string) {
-	for _, line := range strings.Split(payload, "\n") {
-		fmt.Fprintf(w, "data: %s\n", line)
+// writeSSE emits one record as an SSE event. Records are single-line JSON,
+// but a newline in the payload would end the event early and let a crafted
+// log field forge a second one — so every line gets its own `data:` prefix
+// and the client rejoins them.
+//
+// The error is what tells the handler the client is gone; ignoring it would
+// leave the loop writing into a dead connection until something else
+// noticed.
+func writeSSE(w http.ResponseWriter, rec logging.Record) error {
+	if _, err := fmt.Fprintf(w, "id: %d\n", rec.Seq); err != nil {
+		return err
 	}
-	fmt.Fprint(w, "\n")
+	for _, line := range strings.Split(rec.Line, "\n") {
+		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprint(w, "\n")
+	return err
 }

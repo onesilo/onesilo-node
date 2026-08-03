@@ -27,8 +27,8 @@ func TestRecordingLoggerWritesBothPlaces(t *testing.T) {
 		t.Fatalf("want 1 recorded line, got %d", len(backlog))
 	}
 	var entry map[string]any
-	if err := json.Unmarshal([]byte(backlog[0]), &entry); err != nil {
-		t.Fatalf("recorded line is not JSON: %v (%q)", err, backlog[0])
+	if err := json.Unmarshal([]byte(backlog[0].Line), &entry); err != nil {
+		t.Fatalf("recorded line is not JSON: %v (%q)", err, backlog[0].Line)
 	}
 	if entry["msg"] != "admin API listening" || entry["addr"] != "127.0.0.1:8766" {
 		t.Fatalf("recorded entry lost fields: %v", entry)
@@ -48,7 +48,7 @@ func TestRecordingCarriesWithAttrs(t *testing.T) {
 	logger.Info("opened", "path", "/tmp/x")
 
 	var entry map[string]any
-	if err := json.Unmarshal([]byte(rec.Backlog()[0]), &entry); err != nil {
+	if err := json.Unmarshal([]byte(rec.Backlog()[0].Line), &entry); err != nil {
 		t.Fatal(err)
 	}
 	if entry["capability"] != "memory" {
@@ -65,7 +65,11 @@ func TestBacklogKeepsTheNewestLinesInOrder(t *testing.T) {
 	for _, s := range []string{"one", "two", "three", "four", "five"} {
 		rec.Write([]byte(s + "\n"))
 	}
-	got := strings.Join(rec.Backlog(), ",")
+	var lines []string
+	for _, r := range rec.Backlog() {
+		lines = append(lines, r.Line)
+	}
+	got := strings.Join(lines, ",")
 	if got != "three,four,five" {
 		t.Fatalf("want the newest three in order, got %q", got)
 	}
@@ -82,7 +86,7 @@ func TestLevelFilteringAppliesToTheRecorder(t *testing.T) {
 	logger.Warn("important")
 
 	backlog := rec.Backlog()
-	if len(backlog) != 1 || !strings.Contains(backlog[0], "important") {
+	if len(backlog) != 1 || !strings.Contains(backlog[0].Line, "important") {
 		t.Fatalf("want only the warning recorded, got %v", backlog)
 	}
 }
@@ -96,9 +100,9 @@ func TestSubscribersReceiveNewLinesOnly(t *testing.T) {
 	rec.Write([]byte("after\n"))
 
 	select {
-	case line := <-ch:
-		if line != "after" {
-			t.Fatalf("want the live line, got %q", line)
+	case rec := <-ch:
+		if rec.Line != "after" {
+			t.Fatalf("want the live line, got %q", rec.Line)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("subscriber received nothing")
@@ -147,8 +151,8 @@ func TestASlowSubscriberNeverBlocksTheLogger(t *testing.T) {
 	var sawNotice bool
 	for i := 0; i < 2; i++ {
 		select {
-		case line := <-ch:
-			if strings.Contains(line, "fell behind") {
+		case rec := <-ch:
+			if strings.Contains(rec.Line, "fell behind") {
 				sawNotice = true
 			}
 		case <-time.After(time.Second):
@@ -169,11 +173,49 @@ func TestNilRecorderIsUsable(t *testing.T) {
 		t.Fatal(err)
 	}
 	ch, cancel := rec.Subscribe(1)
+	// The channel must stay OPEN until cancel. A closed one would end the
+	// SSE handler's loop immediately, so the console would report a dead
+	// connection when the truth is simply that there is nothing to show.
+	select {
+	case <-ch:
+		t.Fatal("a nil recorder's subscription must not close on its own")
+	case <-time.After(50 * time.Millisecond):
+	}
 	cancel()
+	cancel() // idempotent, like the real one
 	if _, open := <-ch; open {
-		t.Fatal("a nil recorder should hand back a closed channel")
+		t.Fatal("cancel should close the subscription channel")
 	}
 	if rec.Subscribers() != 0 {
 		t.Fatal("a nil recorder has no subscribers")
+	}
+}
+
+func TestSequenceNumbersAreMonotonicAcrossBacklogAndLive(t *testing.T) {
+	// Sequence numbers are what let a consumer that reads the backlog and
+	// then subscribes tell replayed records from new ones. Identical text
+	// cannot: logging the same message twice is not a duplicate.
+	rec := NewRecorder(10)
+	rec.Write([]byte("repeated\n"))
+	rec.Write([]byte("repeated\n"))
+
+	backlog := rec.Backlog()
+	if len(backlog) != 2 {
+		t.Fatalf("want both identical lines retained, got %d", len(backlog))
+	}
+	if backlog[0].Seq != 1 || backlog[1].Seq != 2 {
+		t.Fatalf("want seqs 1,2 got %d,%d", backlog[0].Seq, backlog[1].Seq)
+	}
+
+	ch, cancel := rec.Subscribe(4)
+	defer cancel()
+	rec.Write([]byte("repeated\n"))
+	select {
+	case got := <-ch:
+		if got.Seq != 3 {
+			t.Fatalf("live record should continue the sequence, got %d", got.Seq)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("subscriber received nothing")
 	}
 }
