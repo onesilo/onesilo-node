@@ -177,6 +177,7 @@ func renderPanelScreen(cfg config.Config, st adminapi.Status, pendingPairings in
 	fmt.Fprintf(&b, "Current Configuration:\n")
 	fmt.Fprintf(&b, "  Mode:          %s\n", modeName(cfg))
 	fmt.Fprintf(&b, "  Capabilities:  %s\n", capabilitiesLine(cfg))
+	fmt.Fprintf(&b, "  Serving:       %s\n", servingLine(cfg))
 	fmt.Fprintf(&b, "  Admin:         http://127.0.0.1:%d\n", cfg.Admin.Port)
 	fmt.Fprintf(&b, "  Remote access: %s\n", remoteLine(cfg, st))
 	fmt.Fprintf(&b, "  Logs:          %s\n", logPath)
@@ -210,8 +211,9 @@ func modeName(cfg config.Config) string {
 	return "Local"
 }
 
-// capabilitiesLine lists what the node is configured to provide. LAN means
-// the node advertises itself to Silo apps on the local network.
+// Capabilities are what the node can DO. Reach — who can talk to it — is
+// reported separately by servingLine; listing LAN here made an exposure
+// decision read like a feature.
 func capabilitiesLine(cfg config.Config) string {
 	var caps []string
 	if cfg.Capabilities.Compute {
@@ -220,13 +222,18 @@ func capabilitiesLine(cfg config.Config) string {
 	if cfg.Capabilities.Memory {
 		caps = append(caps, "Memory")
 	}
-	if cfg.LAN.Enabled {
-		caps = append(caps, "LAN")
-	}
 	if len(caps) == 0 {
 		return "none"
 	}
 	return strings.Join(caps, ", ")
+}
+
+// servingLine states who can reach this node, in the same words the setup
+// picker used, so the answer given there is recognisable here.
+func servingLine(cfg config.Config) string {
+	shape := describeShape(cfg, cfg.Exposed())
+	info := shapeInfos[shape]
+	return fmt.Sprintf("%s — good for %s", info.label, info.goodFor)
 }
 
 // modeMenuLabel is menu item 2: the mode the node would switch to.

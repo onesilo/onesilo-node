@@ -38,6 +38,7 @@ func runSetup(args []string) int {
 	fs := flag.NewFlagSet("onesilo-node setup", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to TOML config file (default ~/.onesilo-node/config.toml)")
 	yes := fs.Bool("yes", false, "non-interactive: initialize config with defaults and exit")
+	serve := fs.String("serve", "", "who this node serves: agents (loopback only), network (LAN discovery), anywhere (remote). Skips the question.")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -79,6 +80,22 @@ func runSetup(args []string) int {
 	p.printf("Welcome to One Silo Node\n\n")
 	p.printf("  data dir: %s\n", dataDir)
 	p.printf("  config:   %s\n\n", path)
+
+	// Reach, before anything slow: it is the consequential answer, and
+	// asking it after a multi-minute model download buries it.
+	if requested := strings.TrimSpace(*serve); requested != "" {
+		shape, ok := parseShape(requested)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "onesilo-node setup: -serve must be one of %s (got %q)\n", shapeNames(), requested)
+			return 2
+		}
+		applyShape(&cfg, shape)
+		announceShape(p, shape)
+	} else if firstRun {
+		shape := askShape(p, ShapeAgents)
+		applyShape(&cfg, shape)
+		announceShape(p, shape)
+	}
 
 	// Admin token — generated once, loaded automatically at start.
 	adminToken, created, err := ensureAdminToken(dataDir)
@@ -134,6 +151,7 @@ func runSetup(args []string) int {
 		p.printf("Config written to %s.\n\n", path)
 		p.printf("  mode:          %s\n", modeName(cfg))
 		p.printf("  capabilities:  %s\n", capabilitiesLine(cfg))
+		p.printf("  serving:       %s\n", servingLine(cfg))
 		p.printf("  admin:         http://127.0.0.1:%d\n", cfg.Admin.Port)
 		p.printf("\nStart the node:\n\n  onesilo-node\n")
 		return 0
@@ -143,14 +161,18 @@ func runSetup(args []string) int {
 }
 
 // applyProductDefaults is what "launch with default settings" means on a
-// machine that has never run a node: a Local Node providing Compute,
-// Memory, and LAN discovery to the owner's Silo apps. Only ever applied
-// when no config file exists — an existing config is the operator's.
+// machine that has never run a node: a Local Node providing Compute and
+// Memory. Only ever applied when no config file exists — an existing config
+// is the operator's.
+//
+// Capabilities only. Reach — who can talk to this node — is asked rather
+// than defaulted; see askShape. Turning LAN discovery on here meant a fresh
+// node advertised itself over Bonjour and accepted connections from the
+// whole local network without anyone being asked.
 func applyProductDefaults(cfg *config.Config) {
 	cfg.Mode = config.ModeLocal
 	cfg.Capabilities.Compute = true
 	cfg.Capabilities.Memory = true
-	cfg.LAN.Enabled = true
 }
 
 // deviceNameFor mirrors the node's device-name fallback (config, then
