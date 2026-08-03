@@ -137,8 +137,8 @@ sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 If it still reports outdated Command Line Tools:
 `sudo rm -rf /Library/Developer/CommandLineTools && sudo xcode-select --install`.
 
-Tags are still the stable versions — pin them with `go install …@v0.1.0` or
-`ghcr.io/onesilo/onesilo-node:v0.1.0`.
+Tags are still the stable versions — pin them with `go install …@v0.2.0` or
+`ghcr.io/onesilo/onesilo-node:v0.2.0`.
 
 ## Quickstart
 
