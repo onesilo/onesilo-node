@@ -132,6 +132,11 @@ func TestAskShapePrintsGoodForAndTradeoffs(t *testing.T) {
 		"humans using this node on this network",
 		"humans using this node anywhere",
 		"advertises itself on your local network",
+		// Discovery is a broadcast; access is not. Stating the first
+		// without the second reads as "anyone on the wifi can use it",
+		// which is both wrong and enough to scare someone off the setting
+		// they actually want.
+		"Approved devices only, end-to-end encrypted",
 		"needs sign-in and a subscription",
 		"(default)",
 	} {

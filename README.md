@@ -161,8 +161,8 @@ What should this node do?
   2. Serve people on this network
      Good for: humans using this node on this network.
      The Silo app on your phone or laptop finds it automatically,
-     at home or in the office.
-     Trade-off: it advertises itself on your local network and accepts connections from it.
+     at home or in the office. Approved devices only, end-to-end encrypted.
+     Trade-off: it advertises itself on your local network, so anyone there can see it exists.
 
   3. Serve people anywhere
      Good for: humans using this node anywhere.

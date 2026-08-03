@@ -53,9 +53,14 @@ var shapeInfos = map[Shape]shapeInfo{
 		goodFor: "humans using this node on this network",
 		detail: []string{
 			"The Silo app on your phone or laptop finds it automatically,",
-			"at home or in the office.",
+			"at home or in the office. Approved devices only, end-to-end encrypted.",
 		},
-		tradeoff: "it advertises itself on your local network and accepts connections from it.",
+		// What actually leaks is the node's existence, not access to it:
+		// discovery is a broadcast, but a device that has not been approved
+		// here gets nothing past the handshake. Saying it "accepts
+		// connections from the network" overstated that and would push
+		// people away from the setting they want.
+		tradeoff: "it advertises itself on your local network, so anyone there can see it exists.",
 	},
 	ShapeAnywhere: {
 		label:   "Serve people anywhere",
