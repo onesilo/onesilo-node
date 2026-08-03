@@ -24,6 +24,7 @@ import (
 	"github.com/onesilo/onesilo-node/internal/controlplane"
 	"github.com/onesilo/onesilo-node/internal/gateway"
 	"github.com/onesilo/onesilo-node/internal/lanserve"
+	"github.com/onesilo/onesilo-node/internal/logging"
 	"github.com/onesilo/onesilo-node/internal/memory"
 	"github.com/onesilo/onesilo-node/internal/openaiapi"
 	"github.com/onesilo/onesilo-node/internal/pairing"
@@ -42,6 +43,9 @@ type Node struct {
 	logger     *slog.Logger
 	configPath string
 	adminToken string
+	// logs backs the admin UI's live console. Nil is fine — the console is
+	// then simply empty — so callers that don't record logs need no changes.
+	logs *logging.Recorder
 
 	// cfgMu guards cfg only; reconcileMu serializes Reconcile.
 	cfgMu sync.RWMutex
@@ -99,12 +103,14 @@ type Node struct {
 
 // New builds a node from the loaded config. configPath is where admin-API
 // config updates are persisted. adminToken guards the admin API (from
-// SILO_NODE_ADMIN_TOKEN; empty fails closed).
-func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger) (*Node, error) {
+// SILO_NODE_ADMIN_TOKEN; empty fails closed). logs backs the admin UI's
+// live console and may be nil, in which case the console is empty.
+func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger, logs *logging.Recorder) (*Node, error) {
 	n := &Node{
 		logger:        logger,
 		configPath:    configPath,
 		adminToken:    adminToken,
+		logs:          logs,
 		cfg:           cfg,
 		capRunning:    map[string]bool{},
 		startFailures: map[string]string{},

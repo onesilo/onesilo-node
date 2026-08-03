@@ -314,3 +314,60 @@ input:focus, select:focus { border-color: var(--primary); }
   z-index: 10;
 }
 .toast.error { color: #e87ba6; }
+
+/* --- live log console --- */
+
+.log-stream {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 14px;
+  /* Fills the viewport below the toolbar so the console is the page, not a
+     box on it — with a floor so a short window still shows useful history. */
+  height: max(320px, calc(100vh - 260px));
+  overflow-y: auto;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+.log-row {
+  display: flex;
+  gap: 10px;
+  padding: 1px 0;
+  /* Long attribute strings scroll the container rather than wrapping into
+     an unreadable block. */
+  white-space: pre;
+}
+
+.log-row:hover { background: rgba(255, 255, 255, 0.03); }
+
+.log-time { color: var(--muted); flex: none; }
+.log-level { flex: none; width: 44px; color: var(--secondary); }
+.log-msg { color: var(--fg); }
+.log-attrs { color: var(--secondary); }
+
+.log-debug .log-level { color: #6f6f6f; }
+.log-debug .log-msg { color: var(--secondary); }
+.log-info .log-level { color: var(--primary); }
+.log-warn .log-level, .log-warn .log-msg { color: var(--orange); }
+.log-error .log-level, .log-error .log-msg { color: #e87ba6; }
+
+/* Form controls default to full width (they live in stacked .field rows);
+   in a toolbar the select has to sit inline with the buttons instead. */
+.toolbar select { width: auto; height: 32px; font-size: 13px; padding: 0 10px; }
+
+.log-status { flex: none; font-size: 13px; }
+.log-live { color: var(--green); }
+.log-live::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  vertical-align: middle;
+}

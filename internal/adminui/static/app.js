@@ -107,11 +107,19 @@ $("#token-input").addEventListener("keydown", (e) => {
 // --- router ---
 
 let pollTimer = null;
+// Aborted on every navigation. The log console holds a response open for as
+// long as it is on screen, so without this, leaving and returning to the
+// page would stack a second stream on top of the first.
+let viewAbort = null;
 
 function route() {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
+  }
+  if (viewAbort) {
+    viewAbort.abort();
+    viewAbort = null;
   }
   const hash = location.hash || "#/silos";
   const parts = hash.slice(2).split("/").filter(Boolean);
@@ -124,6 +132,7 @@ function route() {
   main.replaceChildren();
   if (page === "silos" && parts[1]) renderSiloDetail(decodeURIComponent(parts[1]));
   else if (page === "models") renderModels();
+  else if (page === "logs") renderLogs();
   else if (page === "settings") renderSettings();
   else renderSilos();
 }
@@ -629,6 +638,188 @@ function nodeKeyEl(key) {
     },
   }, "Reveal");
   return el("span", null, code, btn);
+}
+
+// --- Logs ---
+
+const LOG_LEVELS = ["DEBUG", "INFO", "WARN", "ERROR"];
+// Bounds the DOM, not the server's ring: an all-day console would otherwise
+// grow until the tab is unusable.
+const LOG_VIEW_MAX = 2000;
+
+async function renderLogs() {
+  let minLevel = "DEBUG";
+  let follow = true;
+  let paused = false;
+
+  const status = el("span", { class: "muted log-status" }, "connecting…");
+  const stream = el("div", { class: "log-stream" });
+  // Records that arrived while paused, replayed on resume so pausing to
+  // read something doesn't silently lose what happened meanwhile.
+  const heldWhilePaused = [];
+  const levelSelect = el("select", {
+    class: "select",
+    onchange: (e) => {
+      minLevel = e.target.value;
+      applyLevel();
+    },
+  }, ...LOG_LEVELS.map((l) => el("option", { value: l }, l + " and above")));
+  const pauseBtn = el("button", {
+    class: "btn btn-outline btn-sm",
+    onclick: () => {
+      paused = !paused;
+      pauseBtn.textContent = paused ? "Resume" : "Pause";
+      // Resuming without catching up would leave a silent hole, so the
+      // buffered lines are flushed rather than discarded.
+      if (!paused) {
+        for (const line of heldWhilePaused) appendLine(line);
+        heldWhilePaused.length = 0;
+      }
+    },
+  }, "Pause");
+
+  main.append(
+    el("div", { class: "page-title" }, "Logs"),
+    el("div", { class: "page-sub" },
+      "What the node is doing right now. Streamed live; the last " +
+      "1000 lines are kept, so a restart clears the history."),
+    el("div", { class: "toolbar" },
+      levelSelect,
+      el("label", { class: "check" },
+        el("input", {
+          type: "checkbox",
+          checked: "checked",
+          onchange: (e) => {
+            follow = e.target.checked;
+            if (follow) stream.scrollTop = stream.scrollHeight;
+          },
+        }),
+        "Follow",
+      ),
+      pauseBtn,
+      el("button", {
+        class: "btn btn-outline btn-sm",
+        onclick: () => stream.replaceChildren(),
+      }, "Clear"),
+      el("div", { class: "spacer" }),
+      status,
+    ),
+    stream,
+  );
+
+  // Scrolling up is an explicit "let me read this" — stop yanking the view
+  // to the bottom until the operator returns there.
+  stream.addEventListener("scroll", () => {
+    const atBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 24;
+    if (follow !== atBottom) {
+      follow = atBottom;
+      $(".check input", main).checked = atBottom;
+    }
+  });
+
+  function levelRank(level) {
+    const i = LOG_LEVELS.indexOf((level || "INFO").toUpperCase());
+    return i === -1 ? 1 : i; // unknown levels behave like INFO
+  }
+
+  function applyLevel() {
+    const min = levelRank(minLevel);
+    for (const row of stream.children) {
+      row.classList.toggle("hidden", levelRank(row.dataset.level) < min);
+    }
+  }
+
+  function appendLine(record) {
+    const level = (record.level || "INFO").toUpperCase();
+    const attrs = Object.entries(record)
+      .filter(([k]) => k !== "time" && k !== "level" && k !== "msg")
+      .map(([k, v]) => k + "=" + (typeof v === "string" ? v : JSON.stringify(v)))
+      .join(" ");
+    const row = el("div", { class: "log-row log-" + level.toLowerCase() },
+      el("span", { class: "log-time" }, fmtLogTime(record.time)),
+      el("span", { class: "log-level" }, level),
+      el("span", { class: "log-msg" }, record.msg || ""),
+      attrs ? el("span", { class: "log-attrs" }, attrs) : null,
+    );
+    row.dataset.level = level;
+    if (levelRank(level) < levelRank(minLevel)) row.classList.add("hidden");
+    stream.append(row);
+    while (stream.childElementCount > LOG_VIEW_MAX) stream.firstElementChild.remove();
+    if (follow) stream.scrollTop = stream.scrollHeight;
+  }
+
+  function handleRecord(json) {
+    let record;
+    try {
+      record = JSON.parse(json);
+    } catch (_) {
+      record = { msg: json }; // never drop a line just because it didn't parse
+    }
+    if (paused) {
+      heldWhilePaused.push(record);
+      // Bound the hold too, or a long pause becomes a memory leak.
+      if (heldWhilePaused.length > LOG_VIEW_MAX) heldWhilePaused.shift();
+      return;
+    }
+    appendLine(record);
+  }
+
+  viewAbort = new AbortController();
+  // Deliberately fetch + read the body rather than EventSource: EventSource
+  // cannot set an Authorization header, and the alternative is putting the
+  // admin token in the query string where it lands in history.
+  try {
+    const res = await fetch("/v1/logs/stream", {
+      headers: { Authorization: "Bearer " + (localStorage.getItem(TOKEN_KEY) || "") },
+      signal: viewAbort.signal,
+    });
+    if (res.status === 401) {
+      showGate(true);
+      return;
+    }
+    if (!res.ok) {
+      status.textContent = "stream failed (" + res.status + ")";
+      status.className = "error log-status";
+      return;
+    }
+    status.textContent = "live";
+    status.className = "log-status log-live";
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE events are separated by a blank line; keep any partial tail.
+      const events = buffer.split("\n\n");
+      buffer = events.pop();
+      for (const event of events) {
+        const data = event
+          .split("\n")
+          .filter((l) => l.startsWith("data:"))
+          .map((l) => l.slice(5).trimStart())
+          .join("\n");
+        if (data) handleRecord(data);
+      }
+    }
+    status.textContent = "disconnected — reload to reconnect";
+    status.className = "muted log-status";
+  } catch (err) {
+    if (err.name === "AbortError") return; // navigated away
+    status.textContent = "stream error: " + err.message;
+    status.className = "error log-status";
+  }
+}
+
+function fmtLogTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d)) return "";
+  const p = (n, w) => String(n).padStart(w || 2, "0");
+  return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) +
+    "." + p(d.getMilliseconds(), 3);
 }
 
 function fmtUptime(secs) {

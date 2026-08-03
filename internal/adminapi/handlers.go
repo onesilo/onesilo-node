@@ -144,6 +144,7 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 	}
 
 	registerUIRoutes(authed, ctrl, logger)
+	registerLogRoutes(authed, ctrl)
 
 	authed("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, ctrl.Status(r.Context()))

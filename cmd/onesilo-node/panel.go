@@ -53,7 +53,12 @@ func runPanel(ctx context.Context, cfg config.Config, cfgPath, dataDir, adminTok
 	log.SetOutput(logFile)
 	defer log.SetOutput(os.Stderr)
 
-	n, err := node.New(cfg, cfgPath, adminToken, logging.NewWithWriter(cfg.Log, logFile))
+	// Panel mode is where the console earns its keep: logs are diverted to a
+	// file specifically so they don't scribble over this screen, which
+	// otherwise leaves the operator with no way to watch the node at all.
+	logRecorder := logging.NewRecorder(logging.DefaultRecorderCapacity)
+	n, err := node.New(cfg, cfgPath, adminToken,
+		logging.NewRecording(cfg.Log, logFile, logRecorder), logRecorder)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "onesilo-node setup: "+err.Error())
 		return 1

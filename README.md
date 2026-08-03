@@ -252,6 +252,7 @@ requires `Authorization: Bearer <admin token>`. The token comes from
 | `GET /v1/silos/{silo_id}/export` | download the silo as a `.silo` package ([silo-spec](https://github.com/onesilo/silo-spec) v0.1.1) |
 | `GET /v1/models` | installed Ollama models, active/default flags, pull progress |
 | `POST /v1/models/pull` | start a background model pull; body `{"model": "..."}` |
+| `GET /v1/logs/stream` | live log stream (Server-Sent Events): the retained recent records, then every new one as it happens |
 
 `onesilo-node healthcheck` probes `/healthz` and exits 0/1 — wire it to a
 Docker `HEALTHCHECK`.
@@ -269,7 +270,7 @@ Docker and headless case) means no parent supervision.
 
 The admin port also serves a dashboard at `http://127.0.0.1:8766/` —
 embedded in the binary, no extra install. It asks for the admin token once
-(kept in localStorage) and gives you three pages:
+(kept in localStorage) and gives you four pages:
 
 - **Silos** — every silo on the node with its memories: inspect, delete,
   and **Export .silo** (downloads the silo in the open
@@ -278,6 +279,12 @@ embedded in the binary, no extra install. It asks for the admin token once
 - **Models** — the local LLM lineup: see what's installed, pull new models
   from the Ollama library with live progress, and activate the default
   model the node serves.
+- **Logs** — a live console of what the node is doing right now, streamed
+  as it happens, with a level filter, follow/pause, and the last 1000
+  lines retained so opening the page mid-incident shows what led up to it.
+  This is the only view of the node when it runs under `onesilo-node
+  setup`'s control panel (which diverts logs to a file so they don't
+  scribble over the screen) or under a supervisor that swallows stderr.
 - **Settings** — the full node configuration (local vs gateway mode,
   capabilities, control-plane URL + auth mode, connected OAuth account,
   Ollama, tunnel, LAN) with live status: registration, tunnel URL,
