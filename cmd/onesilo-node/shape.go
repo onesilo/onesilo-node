@@ -17,11 +17,16 @@ import (
 type Shape string
 
 const (
-	// ShapeAgents serves software on this machine. Loopback only.
+	// ShapeAgents serves software on this machine. Loopback only: LAN
+	// discovery off and no tunnel.
 	ShapeAgents Shape = "agents"
-	// ShapeNetwork adds LAN discovery for people's devices here.
+	// ShapeNetwork adds LAN discovery for people's devices here, still
+	// without a tunnel.
 	ShapeNetwork Shape = "network"
-	// ShapeAnywhere adds a tunnel and control-plane registration.
+	// ShapeAnywhere is LAN discovery plus remote access. Setup cannot finish
+	// it — the tunnel needs sign-in and a subscription check, which is the
+	// panel's interactive flow — so picking it here configures the LAN half
+	// and points at the rest. It is the only shape that never narrows.
 	ShapeAnywhere Shape = "anywhere"
 )
 
@@ -70,7 +75,7 @@ var shapeInfos = map[Shape]shapeInfo{
 			"registered with One Silo.",
 		},
 		tradeoff: "needs sign-in and a subscription; running locally is always free.",
-		followUp: "Remote access is not on yet — turn it on from the panel to sign in and open the tunnel.",
+		followUp: "LAN is set up; remote access is not on yet — turn it on from the panel to sign in and open the tunnel.",
 	},
 }
 
@@ -89,22 +94,35 @@ func parseShape(s string) (Shape, bool) {
 
 // applyShape writes a shape onto a config.
 //
-// Only the reach settings are touched. Capabilities are what the node can
-// do, which is a different question from who can reach it, and an operator
-// who turned one off should not have it turned back on by answering this.
+// Reach has two axes — LAN discovery and the tunnel — and a shape has to own
+// both of them, or it is not describing reach at all. Setting LAN alone meant
+// `-serve=agents` on a config with a live tunnel printed "nothing listens
+// beyond loopback" at a node that was still reachable from the internet:
+// exactly the gap between claim and truth this picker exists to close.
+//
+// So the narrowing shapes narrow both. That can switch off remote access
+// someone had configured, which is the point — "serve agents on this
+// machine" is an explicit request to stop serving everyone else, and it is
+// one panel toggle to undo. ShapeAnywhere is the exception: it is the widest
+// shape, so it only ever opens.
+//
+// Capabilities are left alone throughout. What a node can do is a different
+// question from who can reach it, and an operator who turned one off should
+// not have it turned back on by answering this.
 func applyShape(cfg *config.Config, shape Shape) {
+	cfg.Mode = config.ModeLocal
 	switch shape {
 	case ShapeAgents:
-		cfg.Mode = config.ModeLocal
 		cfg.LAN.Enabled = false
+		cfg.Tunnel.Mode = config.TunnelModeOff
 	case ShapeNetwork:
-		cfg.Mode = config.ModeLocal
 		cfg.LAN.Enabled = true
+		cfg.Tunnel.Mode = config.TunnelModeOff
 	case ShapeAnywhere:
-		// Remote access is arranged interactively (sign-in, subscription
-		// check, tunnel choice) by the panel's own flow — this records the
-		// intent and leaves that alone rather than half-configuring it.
-		cfg.Mode = config.ModeLocal
+		// The tunnel needs sign-in, a subscription check and a mode choice —
+		// the panel's interactive flow, not something setup can complete.
+		// Whatever it is now is left as it is: already on stays on, and off
+		// stays off with announceShape saying so.
 		cfg.LAN.Enabled = true
 	}
 }
@@ -181,11 +199,22 @@ func askShape(p *prompter, def Shape) Shape {
 
 // announceShape confirms the choice in one line, plus anything the picker
 // could not do for them.
-func announceShape(p *prompter, shape Shape) {
-	info := shapeInfos[shape]
+//
+// It reports what the config now says rather than what was asked for, so the
+// line cannot outrun the settings behind it: picking "anywhere" on a node
+// with no tunnel reads as the network shape it currently is, with the
+// remaining step named.
+func announceShape(p *prompter, cfg config.Config, shape Shape) {
+	actual := describeShape(cfg, cfg.Exposed())
+	info := shapeInfos[actual]
 	p.printf("Serving: %s — good for %s.\n", info.label, info.goodFor)
-	if info.followUp != "" {
-		p.printf("  %s\n", info.followUp)
+	// Only when they asked for more than the config got. Someone who picked
+	// "anywhere" on a node whose tunnel is already up is not waiting on
+	// anything.
+	if shape != actual {
+		if follow := shapeInfos[shape].followUp; follow != "" {
+			p.printf("  %s\n", follow)
+		}
 	}
 	p.printf("\n")
 }

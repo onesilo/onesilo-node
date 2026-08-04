@@ -55,6 +55,50 @@ func TestApplyShapeSetsReach(t *testing.T) {
 	}
 }
 
+// Reach is LAN *and* the tunnel. Owning only the first meant `-serve=agents`
+// printed "nothing listens beyond loopback" at a node still reachable from
+// the internet — the exact gap between claim and truth the picker exists to
+// close.
+func TestNarrowingShapesCloseTheTunnel(t *testing.T) {
+	for _, shape := range []Shape{ShapeAgents, ShapeNetwork} {
+		cfg := config.Default()
+		cfg.Tunnel.Mode = config.TunnelModeQuick
+		applyShape(&cfg, shape)
+		if cfg.Exposed() {
+			t.Errorf("%s: tunnel = %q, want it closed — the shape claims a narrower reach than that",
+				shape, cfg.Tunnel.Mode)
+		}
+		if got := describeShape(cfg, cfg.Exposed()); got != shape {
+			t.Errorf("%s: config describes as %q; the announcement would contradict the request", shape, got)
+		}
+	}
+}
+
+// The widest shape only ever opens. Someone with remote access working who
+// asks to serve people anywhere is not asking to have it torn down.
+func TestAnywhereNeverNarrows(t *testing.T) {
+	cfg := config.Default()
+	cfg.Tunnel.Mode = config.TunnelModeManaged
+	applyShape(&cfg, ShapeAnywhere)
+	if cfg.Tunnel.Mode != config.TunnelModeManaged {
+		t.Errorf("tunnel = %q, want it left alone", cfg.Tunnel.Mode)
+	}
+	if !cfg.LAN.Enabled {
+		t.Error("anywhere must enable LAN")
+	}
+
+	// And with no tunnel it cannot invent one: setup has no way to sign in
+	// or check a subscription, so the honest outcome is the network shape.
+	off := config.Default()
+	applyShape(&off, ShapeAnywhere)
+	if off.Exposed() {
+		t.Error("setup cannot open a tunnel; anywhere must not pretend it did")
+	}
+	if got := describeShape(off, off.Exposed()); got != ShapeNetwork {
+		t.Errorf("describes as %q, want %q", got, ShapeNetwork)
+	}
+}
+
 // A shape answers who can reach the node, not what it can do. An operator who
 // turned compute off should not get it back by saying "serve my phone".
 func TestApplyShapeLeavesCapabilitiesAlone(t *testing.T) {
@@ -150,19 +194,41 @@ func TestAskShapePrintsGoodForAndTradeoffs(t *testing.T) {
 // the tunnel are the panel's job. Saying "serving people anywhere" and
 // stopping there would claim reach the node does not have.
 func TestAnnounceShapeAdmitsUnfinishedRemoteSetup(t *testing.T) {
+	cfg := config.Default()
+	applyShape(&cfg, ShapeAnywhere)
 	p, out := shapePrompter("")
-	announceShape(p, ShapeAnywhere)
+	announceShape(p, cfg, ShapeAnywhere)
 	if !strings.Contains(out.String(), "not on yet") {
 		t.Errorf("anywhere must say remote access is not live yet; got %q", out.String())
+	}
+	// And must report the shape the config actually is, not the one asked
+	// for — claiming "anywhere" at a node with no tunnel is the overclaim.
+	if !strings.Contains(out.String(), shapeInfos[ShapeNetwork].label) {
+		t.Errorf("must announce the network shape it landed on; got %q", out.String())
 	}
 
 	// The shapes that are complete on exit should not imply leftover work.
 	for _, shape := range []Shape{ShapeAgents, ShapeNetwork} {
+		cfg := config.Default()
+		applyShape(&cfg, shape)
 		p, out := shapePrompter("")
-		announceShape(p, shape)
+		announceShape(p, cfg, shape)
 		if strings.Contains(out.String(), "not on yet") {
 			t.Errorf("%s is fully applied; got %q", shape, out.String())
 		}
+	}
+
+	// Nor should someone whose tunnel is already up be told to go turn it on.
+	live := config.Default()
+	live.Tunnel.Mode = config.TunnelModeManaged
+	applyShape(&live, ShapeAnywhere)
+	p, out = shapePrompter("")
+	announceShape(p, live, ShapeAnywhere)
+	if strings.Contains(out.String(), "not on yet") {
+		t.Errorf("remote is already on; got %q", out.String())
+	}
+	if !strings.Contains(out.String(), shapeInfos[ShapeAnywhere].label) {
+		t.Errorf("must announce the anywhere shape; got %q", out.String())
 	}
 }
 

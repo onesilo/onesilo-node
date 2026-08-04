@@ -38,7 +38,7 @@ func runSetup(args []string) int {
 	fs := flag.NewFlagSet("onesilo-node setup", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to TOML config file (default ~/.onesilo-node/config.toml)")
 	yes := fs.Bool("yes", false, "non-interactive: initialize config with defaults and exit")
-	serve := fs.String("serve", "", "who this node serves: agents (loopback only), network (LAN discovery), anywhere (remote). Skips the question.")
+	serve := fs.String("serve", "", "who this node serves: agents (loopback only), network (LAN discovery), anywhere (LAN discovery; enable remote access from the panel, which needs sign-in). Skips the question.")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -90,11 +90,11 @@ func runSetup(args []string) int {
 			return 2
 		}
 		applyShape(&cfg, shape)
-		announceShape(p, shape)
+		announceShape(p, cfg, shape)
 	} else if firstRun {
 		shape := askShape(p, ShapeAgents)
 		applyShape(&cfg, shape)
-		announceShape(p, shape)
+		announceShape(p, cfg, shape)
 	}
 
 	// Admin token — generated once, loaded automatically at start.

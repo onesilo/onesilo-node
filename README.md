@@ -175,8 +175,16 @@ Answer it up front with `-serve=agents|network|anywhere` to skip the
 question — that's what `onesilo-buzz` does when it installs a node for
 itself. `-yes` (headless init) takes `agents`: the narrowest reach, because
 a scripted install is exactly where nobody is present to notice a service
-starting to advertise itself. Picking `anywhere` records the intent and
-configures LAN; sign-in and the tunnel are still arranged from the panel.
+starting to advertise itself.
+
+A shape owns both reach axes — LAN discovery and the tunnel — so `agents` and
+`network` switch remote access **off** if it was on. That is what asking for
+a narrower node means, and it is one panel toggle to undo. `anywhere` is the
+exception and never narrows: it turns LAN discovery on and leaves the tunnel
+as it is, because opening one needs sign-in and a subscription check, which
+only the panel can do. So on a node without remote access, picking `anywhere`
+lands you at the `network` shape — setup says so and names the remaining
+step, rather than reporting reach the node does not have.
 
 Reach is separate from capability — the shape decides who can talk to the
 node, not what it can do. Both are changeable later from the panel and the
