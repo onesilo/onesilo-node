@@ -147,15 +147,60 @@ make build              # Go 1.25+
 ./bin/onesilo-node setup   # launches the node + control panel (or `setup -yes` for headless init)
 ```
 
-`setup` launches the node with default settings — a **Local Node** with
-Compute, Memory, and LAN discovery on — and drops you into a control panel:
+On a machine that has never run a node, `setup` asks the one question that
+can't be undone by a menu toggle later — who this node is for:
+
+```
+What should this node do?
+
+  1. Serve agents on this machine (default)
+     Good for: local agents using this node.
+     onesilo-buzz, an editor plugin, anything running here.
+     Nothing listens beyond loopback and nothing is advertised.
+
+  2. Serve people on this network
+     Good for: humans using this node on this network.
+     The Silo app on your phone or laptop finds it automatically,
+     at home or in the office. Approved devices only, end-to-end encrypted.
+     Trade-off: it advertises itself on your local network, so anyone there can see it exists.
+
+  3. Serve people anywhere
+     Good for: humans using this node anywhere.
+     The same devices, off your network, over an encrypted tunnel
+     registered with One Silo.
+     Trade-off: needs sign-in and a subscription; running locally is always free.
+```
+
+Answer it up front with `-serve=agents|network|anywhere` to skip the
+question — that's what `onesilo-buzz` does when it installs a node for
+itself. `-yes` (headless init) takes `agents`: the narrowest reach, because
+a scripted install is exactly where nobody is present to notice a service
+starting to advertise itself.
+
+A shape owns both reach axes — LAN discovery and the tunnel — so `agents` and
+`network` switch remote access **off** if it was on. That is what asking for
+a narrower node means, and it is one panel toggle to undo. `anywhere` is the
+exception and never narrows: it turns LAN discovery on and leaves the tunnel
+as it is, because opening one needs sign-in and a subscription check, which
+only the panel can do. So on a node without remote access, picking `anywhere`
+lands you at the `network` shape — setup says so and names the remaining
+step, rather than reporting reach the node does not have.
+
+Reach is separate from capability — the shape decides who can talk to the
+node, not what it can do. Both are changeable later from the panel and the
+admin interface.
+
+`setup` then launches the node as a **Local Node** with Compute and Memory
+on, and drops you into a control panel:
 
 ```
 Welcome to One Silo Node
 
 Current Configuration:
   Mode:          Local
-  Capabilities:  Compute, Memory, LAN
+  Capabilities:  Compute, Memory
+  Serving:       Serve agents on this machine — good for local agents using this node
+  Admin:         http://127.0.0.1:8766
 
   1. Launch Admin Interface (127.0.0.1:8766)
   2. Switch to Local Relay

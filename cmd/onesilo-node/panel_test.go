@@ -20,9 +20,14 @@ func TestApplyProductDefaults(t *testing.T) {
 	if cfg.Mode != config.ModeLocal {
 		t.Errorf("mode = %q, want %q", cfg.Mode, config.ModeLocal)
 	}
-	if !cfg.Capabilities.Compute || !cfg.Capabilities.Memory || !cfg.LAN.Enabled {
-		t.Errorf("product defaults must enable compute, memory, and LAN; got %+v / lan=%v",
-			cfg.Capabilities, cfg.LAN.Enabled)
+	if !cfg.Capabilities.Compute || !cfg.Capabilities.Memory {
+		t.Errorf("product defaults must enable compute and memory; got %+v", cfg.Capabilities)
+	}
+	// Reach is asked, never assumed. A fresh node that quietly bound every
+	// interface and published Bonjour was the bug this whole picker exists
+	// to fix, so defaults must leave LAN off until someone says otherwise.
+	if cfg.LAN.Enabled {
+		t.Error("product defaults must not enable LAN; reach is chosen, not defaulted")
 	}
 	if cfg.Tunnel.Mode != config.TunnelModeOff {
 		t.Errorf("product defaults must not expose the node; tunnel mode = %q", cfg.Tunnel.Mode)
@@ -34,12 +39,14 @@ func TestApplyProductDefaults(t *testing.T) {
 
 func TestCapabilitiesLine(t *testing.T) {
 	cfg := panelTestConfig()
-	if got := capabilitiesLine(cfg); got != "Compute, Memory, LAN" {
-		t.Errorf("defaults line = %q, want %q", got, "Compute, Memory, LAN")
+	// LAN is reach, not a capability: listing it here made an exposure
+	// decision read like a feature.
+	if got := capabilitiesLine(cfg); got != "Compute, Memory" {
+		t.Errorf("defaults line = %q, want %q", got, "Compute, Memory")
 	}
 	cfg.Capabilities.Compute = false
-	if got := capabilitiesLine(cfg); got != "Memory, LAN" {
-		t.Errorf("line = %q, want %q", got, "Memory, LAN")
+	if got := capabilitiesLine(cfg); got != "Memory" {
+		t.Errorf("line = %q, want %q", got, "Memory")
 	}
 	cfg.Capabilities.Memory = false
 	cfg.LAN.Enabled = false
@@ -115,7 +122,7 @@ func TestRenderPanelScreen(t *testing.T) {
 		"Welcome to One Silo Node",
 		"Current Configuration:",
 		"Mode:          Local",
-		"Capabilities:  Compute, Memory, LAN",
+		"Capabilities:  Compute, Memory",
 		"1. Launch Admin Interface (127.0.0.1:8766)",
 		"2. Switch to Local Relay",
 		"3. Enable access from anywhere",
