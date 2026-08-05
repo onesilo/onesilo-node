@@ -20,9 +20,14 @@ type CapabilityProbe interface {
 // capabilityStatusKeys maps node capability names to the control plane's
 // capability identifiers. The memory capability lands in a later phase; its
 // mapping is already wired so enabling it starts reporting automatically.
+// gateway -> relay: a node in gateway ("Local Relay") mode reports itself
+// so the control plane can place it between transports and the control
+// plane in the account graph, with its node_silo_access grants as the
+// access provisioned to the relay.
 var capabilityStatusKeys = map[string][]string{
 	"compute": {"llm_inference"},
 	"memory":  {"silo_recall", "silo_remember"},
+	"gateway": {"relay"},
 }
 
 // Liveness values sent in capabilities_status.

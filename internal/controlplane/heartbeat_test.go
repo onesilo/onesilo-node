@@ -142,3 +142,39 @@ func TestStepIdleWithoutTunnelURL(t *testing.T) {
 		t.Errorf("wait = %v, want idle without a tunnel URL", wait)
 	}
 }
+
+func TestGatewayReportsRelayCapability(t *testing.T) {
+	m := newProbeManager(
+		&fakeProbe{name: "compute", enabled: true, healthy: true},
+		&fakeProbe{name: "gateway", enabled: true, healthy: true},
+	)
+	ids := m.enabledCapabilityIDs()
+	found := false
+	for _, id := range ids {
+		if id == "relay" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("ids = %v, want relay present when gateway is enabled", ids)
+	}
+	status := m.capabilitiesStatus(context.Background())
+	if status["relay"] != "live" {
+		t.Errorf("status[relay] = %q, want live", status["relay"])
+	}
+}
+
+func TestGatewayDisabledDoesNotReportRelay(t *testing.T) {
+	m := newProbeManager(
+		&fakeProbe{name: "compute", enabled: true, healthy: true},
+		&fakeProbe{name: "gateway", enabled: false},
+	)
+	for _, id := range m.enabledCapabilityIDs() {
+		if id == "relay" {
+			t.Fatal("relay reported while gateway disabled")
+		}
+	}
+	if _, has := m.capabilitiesStatus(context.Background())["relay"]; has {
+		t.Error("relay status reported while gateway disabled")
+	}
+}

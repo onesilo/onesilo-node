@@ -204,9 +204,9 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger, 
 		logger.With("capability", "lan"),
 	)
 
-	// The heartbeat maps compute -> llm_inference and memory ->
-	// silo_recall/silo_remember; "lan" and "gateway" have no control-plane
-	// identifier and are reported only through the admin API.
+	// The heartbeat maps compute -> llm_inference, memory ->
+	// silo_recall/silo_remember, and gateway -> relay; "lan" has no
+	// control-plane identifier and is reported only through the admin API.
 	n.capabilities = []Capability{n.computeCap, n.memoryCap, n.gatewayCap, n.openaiCap, n.lanCap}
 	client := controlplane.NewClient(func() string { return n.snapshot().ControlPlane.URL }, tokens)
 	n.cpClient = client
