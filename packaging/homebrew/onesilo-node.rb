@@ -21,8 +21,8 @@
 class OnesiloNode < Formula
   desc "Open-source Silo node: on-device memory and compute for One Silo"
   homepage "https://github.com/onesilo/onesilo-node"
-  url "https://github.com/onesilo/onesilo-node/archive/refs/tags/v0.3.0.tar.gz"
-  sha256 "00a3478103575f6c2bb5c8c84ec33cd5a0321f607c61a3e5fdab5f85b1ecc005"
+  url "https://github.com/onesilo/onesilo-node/archive/refs/tags/v0.4.0.tar.gz"
+  sha256 "10e3991a134d2c373552664fb5852dd4ae8a0964028b5463f6bc7401e36a8437"
   license "Apache-2.0"
   head "https://github.com/onesilo/onesilo-node.git", branch: "main"
 
