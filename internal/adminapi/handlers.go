@@ -145,6 +145,10 @@ func newMux(adminToken string, ctrl Controller, logger *slog.Logger) *http.Serve
 
 	registerUIRoutes(authed, ctrl, logger)
 	registerLogRoutes(authed, ctrl)
+	// Takes the mux too: its callback route is deliberately unauthenticated
+	// (a browser redirect cannot carry the bearer token) and is guarded by
+	// the OAuth state parameter instead.
+	registerControlPlaneAuthRoutes(authed, mux, ctrl, logger)
 
 	authed("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, ctrl.Status(r.Context()))

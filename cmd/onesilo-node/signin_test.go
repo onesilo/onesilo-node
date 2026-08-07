@@ -176,11 +176,11 @@ func TestSignInRejectsStateMismatch(t *testing.T) {
 
 func TestClassifySignInError(t *testing.T) {
 	for _, msg := range []string{"User not found", "access_denied: owner declined", "invalid_grant"} {
-		if !errors.Is(classifySignInError(errors.New(msg)), errUserNotFound) {
+		if !errors.Is(controlplane.ClassifySignInError(errors.New(msg)), errUserNotFound) {
 			t.Errorf("%q should map to user-not-found", msg)
 		}
 	}
-	if errors.Is(classifySignInError(errors.New("network is down")), errUserNotFound) {
+	if errors.Is(controlplane.ClassifySignInError(errors.New("network is down")), errUserNotFound) {
 		t.Error("unrelated errors must not map to user-not-found")
 	}
 }

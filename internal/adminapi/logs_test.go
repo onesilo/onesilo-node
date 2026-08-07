@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onesilo/onesilo-node/internal/controlplane"
 	"github.com/onesilo/onesilo-node/internal/logging"
 )
 
@@ -346,3 +347,14 @@ func TestLogStreamGivesUpWhenWritesFail(t *testing.T) {
 		t.Fatal("the subscription should be released when the handler exits")
 	}
 }
+
+// Control-plane OAuth surface: not exercised by these tests, present so the
+// fake satisfies Controller.
+func (f *fakeLogController) DeviceName() string { return "test-node" }
+func (f *fakeLogController) ControlPlaneCredential() (controlplane.OAuthCredential, error) {
+	return controlplane.OAuthCredential{}, controlplane.ErrNotSignedIn
+}
+func (f *fakeLogController) SaveControlPlaneCredential(controlplane.OAuthCredential) error {
+	return nil
+}
+func (f *fakeLogController) DisconnectControlPlane() error { return nil }

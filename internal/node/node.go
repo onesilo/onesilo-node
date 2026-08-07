@@ -83,6 +83,12 @@ type Node struct {
 
 	jwtStore *controlplane.JWTStore
 	regMgr   *controlplane.Manager
+	// oauthTokens caches the access token derived from oauth.json. Held on
+	// the Node so a credential written at runtime (admin console sign-in)
+	// can invalidate the cache — otherwise the node would keep serving the
+	// pre-sign-in answer, which for a node that was signed out is "no
+	// credential", until the process restarted.
+	oauthTokens *controlplane.OAuthTokenSource
 
 	tunnelMu   sync.Mutex
 	tunnelMgr  *tunnel.Manager
@@ -157,14 +163,15 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger, 
 		return n.computeCap, cfg.Memory.EmbedModel, true
 	}, logger.With("capability", "memory"))
 
+	n.oauthTokens = controlplane.NewOAuthTokenSource(func() (string, error) {
+		cfg := n.snapshot()
+		return cfg.ResolvedDataDir()
+	})
 	tokens := &controlplane.ModalTokenSource{
 		Mode:   func() string { return n.snapshot().ControlPlane.AuthMode },
 		JWT:    n.jwtStore,
 		APIKey: controlplane.NewAPIKeyStore(),
-		OAuth: controlplane.NewOAuthTokenSource(func() (string, error) {
-			cfg := n.snapshot()
-			return cfg.ResolvedDataDir()
-		}),
+		OAuth:  n.oauthTokens,
 	}
 
 	// Gateway relay: exposes the control plane's API/MCP surface to local
@@ -864,4 +871,62 @@ func (n *Node) Shutdown() {
 	if n.cancel != nil {
 		n.cancel()
 	}
+}
+
+// DeviceName implements adminapi.Controller.
+func (n *Node) DeviceName() string { return n.deviceName() }
+
+// ControlPlaneCredential implements adminapi.Controller: the stored One Silo
+// grant, or controlplane.ErrNotSignedIn when there is none.
+func (n *Node) ControlPlaneCredential() (controlplane.OAuthCredential, error) {
+	cfg := n.snapshot()
+	dataDir, err := cfg.ResolvedDataDir()
+	if err != nil {
+		return controlplane.OAuthCredential{}, err
+	}
+	return controlplane.LoadOAuthCredential(dataDir)
+}
+
+// SaveControlPlaneCredential implements adminapi.Controller: persist the
+// grant and make it usable immediately.
+//
+// The invalidate + notify pair is what makes this take effect without a
+// restart. Writing oauth.json alone would leave the cached token source
+// still holding "not signed in", and the registration manager still sitting
+// in whatever backoff its last auth failure earned it — so the node would
+// look connected in the UI and behave disconnected on the wire.
+func (n *Node) SaveControlPlaneCredential(cred controlplane.OAuthCredential) error {
+	cfg := n.snapshot()
+	dataDir, err := cfg.ResolvedDataDir()
+	if err != nil {
+		return err
+	}
+	if err := controlplane.SaveOAuthCredential(dataDir, cred); err != nil {
+		return err
+	}
+	n.oauthTokens.Invalidate()
+	n.regMgr.NotifyTokenUpdated()
+	return nil
+}
+
+// DisconnectControlPlane implements adminapi.Controller: forget the stored
+// grant.
+//
+// Idempotent — a missing file is the desired end state, not an error. Note
+// this only removes the node's copy: it does not revoke the grant at One
+// Silo, which is the owner's to do from their dashboard. Saying so matters,
+// because "disconnect" could reasonably be read as revocation.
+func (n *Node) DisconnectControlPlane() error {
+	cfg := n.snapshot()
+	dataDir, err := cfg.ResolvedDataDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dataDir, controlplane.OAuthCredentialFile)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing %s: %w", path, err)
+	}
+	n.oauthTokens.Invalidate()
+	n.regMgr.NotifyTokenUpdated()
+	return nil
 }
