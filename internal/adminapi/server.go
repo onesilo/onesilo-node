@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
 )
 
 // Controller is what the admin API needs from the node. Implemented by
@@ -51,6 +52,19 @@ type Controller interface {
 	MintOpenAIKey(name string) (MintedOpenAIKey, error)
 	// RevokeOpenAIKey deletes a key by id.
 	RevokeOpenAIKey(id string) error
+	// DeviceName is how this node identifies itself when registering as an
+	// OAuth client, so the owner can recognise it in their dashboard.
+	DeviceName() string
+	// ControlPlaneCredential returns the stored One Silo credential, or an
+	// error when the node is not connected.
+	ControlPlaneCredential() (controlplane.OAuthCredential, error)
+	// SaveControlPlaneCredential persists a freshly obtained credential and
+	// makes it live without a restart.
+	SaveControlPlaneCredential(cred controlplane.OAuthCredential) error
+	// DisconnectControlPlane removes the stored credential. Idempotent:
+	// disconnecting an already-disconnected node is a success, since the
+	// caller's intent is a state, not a transition.
+	DisconnectControlPlane() error
 	// Shutdown begins graceful node shutdown.
 	Shutdown()
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/onesilo/onesilo-node/internal/config"
+	"github.com/onesilo/onesilo-node/internal/controlplane"
 )
 
 type fakeController struct {
@@ -227,3 +228,12 @@ func TestShutdown(t *testing.T) {
 		t.Error("Shutdown was not invoked")
 	}
 }
+
+// Control-plane OAuth surface: not exercised by these tests, present so the
+// fake satisfies Controller.
+func (f *fakeController) DeviceName() string { return "test-node" }
+func (f *fakeController) ControlPlaneCredential() (controlplane.OAuthCredential, error) {
+	return controlplane.OAuthCredential{}, controlplane.ErrNotSignedIn
+}
+func (f *fakeController) SaveControlPlaneCredential(controlplane.OAuthCredential) error { return nil }
+func (f *fakeController) DisconnectControlPlane() error                                 { return nil }
