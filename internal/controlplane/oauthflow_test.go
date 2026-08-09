@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +29,15 @@ func TestSameSecureOriginRejectsOffOriginEndpoints(t *testing.T) {
 		{"different scheme", "http://api.onesilo.com/token", true},
 		{"different port", "https://api.onesilo.com:8443/token", true},
 		{"userinfo smuggling", "https://api.onesilo.com@evil.example/token", true},
+		// An explicit default port is the SAME origin — RFC 8414 metadata
+		// may legally spell it out, and rejecting it breaks sign-in against
+		// a perfectly honest control plane.
+		{"explicit default port is same origin", "https://api.onesilo.com:443/token", false},
+		// But normalization must not loosen anything: 443 spelled out on
+		// http is not http's default, and stays rejected.
+		{"default port of the wrong scheme", "http://api.onesilo.com:443/token", true},
+		// DNS is case-insensitive; a shouted hostname is not another host.
+		{"hostname case", "https://API.ONESILO.COM/token", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := SameSecureOrigin(issuer, tc.endpoint)
@@ -101,9 +111,8 @@ func TestFlowCarriesPKCEAndRedirectURI(t *testing.T) {
 				"registration_endpoint":  srv.URL + "/register",
 			})
 		case "/register":
-			buf := make([]byte, r.ContentLength)
-			_, _ = r.Body.Read(buf)
-			registerBody = string(buf)
+			b, _ := io.ReadAll(r.Body)
+			registerBody = string(b)
 			_ = json.NewEncoder(w).Encode(map[string]string{"client_id": "cid-1"})
 		case "/token":
 			_ = r.ParseForm()

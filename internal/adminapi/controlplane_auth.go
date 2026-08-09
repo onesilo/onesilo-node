@@ -38,14 +38,15 @@ import (
 // redirect URI, so it must match the route exactly.
 const callbackPath = "/v1/controlplane/auth/callback"
 
-// pendingFlows holds authorizations that have been started and not yet
-// completed.
+// pendingFlows holds the authorization that has been started and not yet
+// completed — at most ONE, by design, not a map that happens to be small.
 //
-// Keyed by state, and bounded: a caller that starts flows and abandons them
-// would otherwise grow this without limit, and every entry holds a PKCE
-// verifier. Starting a new flow drops any earlier one — there is exactly one
-// human at this console, so a second "Connect" click means they gave up on
-// the first attempt, and leaving the old verifier resident serves nobody.
+// A single slot is the bound: there is exactly one human at this console,
+// so a second "Connect" click means they gave up on the first attempt, and
+// the new flow replaces it. That is also what keeps abandoned PKCE
+// verifiers from accumulating — the previous one is dropped at the moment
+// it stopped being wanted, and take() consumes the slot on every outcome,
+// success or not.
 type pendingFlows struct {
 	mu   sync.Mutex
 	flow *controlplane.Flow

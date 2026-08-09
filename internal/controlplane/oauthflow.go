@@ -163,6 +163,14 @@ func DiscoverOAuth(ctx context.Context, client *http.Client, base string) (OAuth
 
 // SameSecureOrigin verifies endpoint shares issuer's scheme+host+port and,
 // for non-loopback issuers, is https. Loopback http is tolerated for dev.
+//
+// Ports are compared by their effective value, not their spelling:
+// https://api.onesilo.com:443 IS https://api.onesilo.com, and RFC 8414
+// metadata may legally write the default port out. Comparing the raw Host
+// strings rejected that — a check meant to catch attackers was instead
+// primed to break sign-in against a legitimate but explicit discovery
+// document. Hostnames compare case-insensitively for the same reason: DNS
+// is case-insensitive, and API.ONESILO.COM is not another host.
 func SameSecureOrigin(issuer, endpoint string) error {
 	iu, err := url.Parse(issuer)
 	if err != nil {
@@ -172,13 +180,30 @@ func SameSecureOrigin(issuer, endpoint string) error {
 	if err != nil {
 		return fmt.Errorf("parsing endpoint: %w", err)
 	}
-	if eu.Scheme != iu.Scheme || eu.Host != iu.Host {
+	if eu.Scheme != iu.Scheme ||
+		!strings.EqualFold(eu.Hostname(), iu.Hostname()) ||
+		effectivePort(eu) != effectivePort(iu) {
 		return fmt.Errorf("%s is not on the issuer's origin %s://%s", endpoint, iu.Scheme, iu.Host)
 	}
 	if eu.Scheme != "https" && !isLoopbackHost(eu.Hostname()) {
 		return fmt.Errorf("%s is not https", endpoint)
 	}
 	return nil
+}
+
+// effectivePort is the port a URL actually connects to: the explicit one,
+// or the scheme default when omitted.
+func effectivePort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	switch u.Scheme {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
 }
 
 func isLoopbackHost(host string) bool {
