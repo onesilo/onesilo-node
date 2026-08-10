@@ -398,6 +398,86 @@ async function drawModels(container) {
 
 // --- Settings ---
 
+/**
+ * Connect / disconnect the node's One Silo account.
+ *
+ * This used to read "run onesilo-node setup to sign in", which is an odd
+ * thing to tell someone already looking at the node's admin UI — and on a
+ * headless box there may be no terminal to go to.
+ *
+ * The sign-in itself happens in a new tab against the control plane, which
+ * redirects back to the node's own callback. Nothing is polled here: the
+ * callback tab reports its own outcome, and this view refreshes when the
+ * operator returns to it, so there is no timer left running against a tab
+ * that may never come back.
+ */
+async function renderControlPlaneAuth() {
+  const host = document.querySelector("#cp-auth");
+  if (!host) return;
+  host.textContent = "";
+
+  let auth;
+  try {
+    auth = await api("/v1/controlplane/auth");
+  } catch (err) {
+    host.appendChild(el("span", { class: "error" }, "couldn't read sign-in state: " + err.message));
+    return;
+  }
+
+  if (auth.connected) {
+    host.appendChild(el("span", { class: "badge badge-green" }, "connected"));
+    if (!auth.can_refresh) {
+      // Worth saying: without a refresh token this connection expires and
+      // needs a fresh sign-in, and the operator would otherwise only find
+      // out when registration started failing.
+      host.appendChild(el("span", { class: "hint" },
+        " no refresh token — this will need signing in again when it expires"));
+    }
+    host.appendChild(el("button", {
+      class: "btn btn-secondary",
+      onclick: async (ev) => {
+        ev.target.disabled = true;
+        try {
+          await api("/v1/controlplane/auth", { method: "DELETE" });
+          await renderControlPlaneAuth();
+        } catch (err) {
+          ev.target.disabled = false;
+          host.appendChild(el("span", { class: "error" }, " " + err.message));
+        }
+      },
+    }, "Disconnect"));
+    return;
+  }
+
+  host.appendChild(el("span", { class: "badge badge-gray" }, "not connected"));
+  const connect = el("button", {
+    class: "btn",
+    onclick: async (ev) => {
+      ev.target.disabled = true;
+      ev.target.textContent = "Contacting One Silo…";
+      try {
+        const started = await api("/v1/controlplane/auth/start", { method: "POST" });
+        // Opened rather than navigated: leaving the console would lose any
+        // unsaved state on this page, and the callback tab is
+        // self-describing.
+        window.open(started.authorization_url, "_blank", "noopener");
+        ev.target.textContent = "Waiting for sign-in…";
+        host.appendChild(el("span", { class: "hint" },
+          " finish in the new tab, then "));
+        host.appendChild(el("button", {
+          class: "btn btn-secondary",
+          onclick: () => renderControlPlaneAuth(),
+        }, "Check again"));
+      } catch (err) {
+        ev.target.disabled = false;
+        ev.target.textContent = "Connect to One Silo";
+        host.appendChild(el("span", { class: "error" }, " " + err.message));
+      }
+    },
+  }, "Connect to One Silo");
+  host.appendChild(connect);
+}
+
 async function renderSettings() {
   main.append(
     el("div", { class: "page-title" }, "Settings"),
@@ -429,6 +509,12 @@ async function renderSettings() {
         class: "badge " + (status.mode === "gateway" ? "badge-blue" : "badge-green"),
       }, status.mode)),
       el("dt", null, "Uptime"), el("dd", null, fmtUptime(status.uptime_seconds)),
+      // Not gated on gateway mode: signing in is a PREREQUISITE for going
+      // remote, so hiding it until the node is already a gateway would leave
+      // a local node with no way to connect — which is exactly the gap this
+      // fills for a headless box with no terminal to run setup in.
+      el("dt", null, "One Silo account"),
+      el("dd", { id: "cp-auth" }, "…"),
       ...(status.mode === "gateway" ? [
         el("dt", null, "Control plane"),
         el("dd", null,
@@ -436,13 +522,6 @@ async function renderSettings() {
             ? el("span", { class: "badge badge-green" }, "registered")
             : el("span", { class: "badge badge-gray" }, "not registered"),
           reg.device_id ? " " + reg.device_id : ""),
-        el("dt", null, "OAuth account"),
-        el("dd", null, reg.oauth_signed_in
-          ? el("span", { class: "badge badge-green" }, "signed in")
-          : el("span", { class: "badge badge-gray" }, "not signed in"),
-          reg.oauth_signed_in
-            ? ""
-            : " — run onesilo-node setup to sign in"),
         el("dt", null, "Tunnel"),
         el("dd", null, status.tunnel && status.tunnel.url
           ? status.tunnel.url
@@ -566,6 +645,8 @@ async function renderSettings() {
 
   const pairingCard = el("div", { class: "card" });
   container.append(statusCard, pairingCard, formCard);
+  // After the append: renderControlPlaneAuth() looks the row up by id.
+  void renderControlPlaneAuth();
   renderPendingPairings(pairingCard);
 }
 
