@@ -1,6 +1,13 @@
 package openaiapi
 
-import "testing"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestMintForControlPlaneNamesTheKeyAndVerifies(t *testing.T) {
 	s, err := LoadKeyStore(t.TempDir())
@@ -97,5 +104,83 @@ func TestMintedControlPlaneKeysSurviveAReload(t *testing.T) {
 	}
 	if !reloaded.Verify(plaintext) {
 		t.Error("the key did not survive a restart")
+	}
+}
+
+func TestAPersonalKeyNamedControlPlaneIsNeverRotatedAway(t *testing.T) {
+	// The admin API mints under whatever name the operator types
+	// (Node.MintOpenAIKey passes it straight through), so the name cannot
+	// be evidence of who a key belongs to. Rotating on the name would let
+	// someone destroy their own working key by choosing an unlucky one.
+	s, _ := LoadKeyStore(t.TempDir())
+	decoy, _, err := s.Mint(ControlPlaneKeyName)
+	if err != nil {
+		t.Fatalf("Mint: %v", err)
+	}
+
+	_, superseded, err := s.MintForControlPlane()
+	if err != nil {
+		t.Fatalf("MintForControlPlane: %v", err)
+	}
+	if len(superseded) != 0 {
+		t.Fatalf("superseded %v — a person's key was claimed as the control plane's", superseded)
+	}
+
+	if err := s.RevokeAll(superseded); err != nil {
+		t.Fatalf("RevokeAll: %v", err)
+	}
+	if !s.Verify(decoy) {
+		t.Error("the operator's own key was revoked because of its name")
+	}
+}
+
+func TestOnlyMintForControlPlaneCanSetTheScope(t *testing.T) {
+	s, _ := LoadKeyStore(t.TempDir())
+	if _, k, _ := s.Mint(ControlPlaneKeyName); k.Scope != "" {
+		t.Errorf("a key minted through the public API carries scope %q", k.Scope)
+	}
+	if _, _, err := s.MintForControlPlane(); err != nil {
+		t.Fatalf("MintForControlPlane: %v", err)
+	}
+	scoped := 0
+	for _, k := range s.List() {
+		if k.Scope == ControlPlaneKeyScope {
+			scoped++
+		}
+	}
+	if scoped != 1 {
+		t.Errorf("%d keys carry the control-plane scope, want exactly 1", scoped)
+	}
+}
+
+func TestAKeyStoredBeforeScopesExistedIsNeverRotatedAway(t *testing.T) {
+	// Stores written before Scope existed have no such field. Reading that
+	// absence as "the control plane's" would revoke a key on the first
+	// rotation after an upgrade; reading it as "someone's" costs nothing.
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, keysFile)
+	sum := sha256.Sum256([]byte("silo_sk_legacy"))
+	raw := fmt.Sprintf(
+		`[{"id":"key_legacy0000000","name":"control-plane","sha256":%q,`+
+			`"last4":"gacy","created_at":"2026-01-01T00:00:00Z"}]`,
+		hex.EncodeToString(sum[:]),
+	)
+	if err := os.WriteFile(legacy, []byte(raw), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	s, err := LoadKeyStore(dir)
+	if err != nil {
+		t.Fatalf("LoadKeyStore: %v", err)
+	}
+	_, superseded, err := s.MintForControlPlane()
+	if err != nil {
+		t.Fatalf("MintForControlPlane: %v", err)
+	}
+	if len(superseded) != 0 {
+		t.Errorf("superseded %v — an unscoped legacy key was claimed", superseded)
+	}
+	if !s.Verify("silo_sk_legacy") {
+		t.Error("the legacy key was revoked")
 	}
 }

@@ -47,6 +47,17 @@ type Key struct {
 	SHA256    string    `json:"sha256"`
 	Last4     string    `json:"last4"`
 	CreatedAt time.Time `json:"created_at"`
+	// Scope marks what a key was minted *for*, as opposed to what it was
+	// called. Empty on every key a person mints -- the admin API takes an
+	// arbitrary name, so the name cannot be trusted to say who a key
+	// belongs to. Only MintForControlPlane sets a scope, and only scoped
+	// keys are ever rotated away, so naming your laptop key
+	// "control-plane" is a naming choice and nothing more.
+	//
+	// Absent in stores written before this field existed, which reads as
+	// "not the control plane's" -- the conservative direction, since the
+	// consequence of guessing wrong is revoking someone's working key.
+	Scope string `json:"scope,omitempty"`
 }
 
 // KeyStore holds the minted keys, persisted as JSON in the data dir.
@@ -75,8 +86,15 @@ func LoadKeyStore(dataDir string) (*KeyStore, error) {
 }
 
 // Mint creates a key, persists its hash, and returns the plaintext — the
-// only time it is ever available.
+// only time it is ever available. Keys minted here carry no scope: they
+// belong to whoever asked for one, whatever they chose to call it.
 func (s *KeyStore) Mint(name string) (plaintext string, key Key, err error) {
+	return s.mint(name, "")
+}
+
+// mint is Mint with an explicit scope. Unexported so a scope can only be
+// set by code in this package that means it.
+func (s *KeyStore) mint(name, scope string) (plaintext string, key Key, err error) {
 	secret := make([]byte, 24)
 	if _, err := rand.Read(secret); err != nil {
 		return "", Key{}, fmt.Errorf("generating API key: %w", err)
@@ -95,6 +113,7 @@ func (s *KeyStore) Mint(name string) (plaintext string, key Key, err error) {
 		SHA256:    hex.EncodeToString(sum[:]),
 		Last4:     plaintext[len(plaintext)-4:],
 		CreatedAt: time.Now().UTC(),
+		Scope:     scope,
 	}
 
 	s.mu.Lock()
@@ -181,10 +200,17 @@ func (s *KeyStore) persistLocked() error {
 	return nil
 }
 
-// ControlPlaneKeyName is the Name minted keys carry when they exist for the
-// control plane rather than for a person's IDE or SDK. It is how the node
-// recognizes its own earlier grants so it can retire them — and how the
-// admin API can show the operator that Silo holds a key at all.
+// ControlPlaneKeyScope marks a key minted for the control plane rather than
+// for a person's IDE or SDK. It is how the node recognizes its own earlier
+// grants so it can retire them, and it lives in Key.Scope rather than
+// Key.Name because the admin API mints under an arbitrary operator-supplied
+// name: keying rotation off the name would let someone lose their own key
+// by calling it "control-plane".
+const ControlPlaneKeyScope = "control-plane"
+
+// ControlPlaneKeyName is the display name those keys carry, so the operator
+// can see in the admin API that Silo holds one. Cosmetic — nothing decides
+// anything from it.
 const ControlPlaneKeyName = "control-plane"
 
 // MintForControlPlane mints a key marked as the control plane's and returns
@@ -201,16 +227,20 @@ const ControlPlaneKeyName = "control-plane"
 // before the control plane has accepted the new key would break inference
 // for as long as the registration keeps failing. The caller revokes them
 // once the new key has landed.
+//
+// Only keys carrying ControlPlaneKeyScope are superseded. A person's key is
+// never one of them, whatever they named it — the admin API accepts any
+// name, so a name is not evidence of who a key belongs to.
 func (s *KeyStore) MintForControlPlane() (plaintext string, superseded []string, err error) {
 	s.mu.RLock()
 	for _, k := range s.keys {
-		if k.Name == ControlPlaneKeyName {
+		if k.Scope == ControlPlaneKeyScope {
 			superseded = append(superseded, k.ID)
 		}
 	}
 	s.mu.RUnlock()
 
-	plaintext, _, err = s.Mint(ControlPlaneKeyName)
+	plaintext, _, err = s.mint(ControlPlaneKeyName, ControlPlaneKeyScope)
 	if err != nil {
 		return "", nil, err
 	}

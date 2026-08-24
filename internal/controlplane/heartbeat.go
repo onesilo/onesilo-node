@@ -236,15 +236,21 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 	inferenceKey, commitKey := "", func() {}
 	if m.inferenceKey != nil {
 		k, commit, err := m.inferenceKey.Mint()
-		if err != nil {
+		switch {
+		case err != nil:
 			m.logger.Warn("could not mint an inference key for the control plane; "+
 				"local-compute indexing will stay unavailable", "error", err)
-		} else {
+		case k != "":
 			inferenceKey = k
 			if commit != nil {
 				commitKey = commit
 			}
 		}
+		// An empty key means "publish nothing", so its commit is not taken
+		// even when one is offered. Committing retires whatever the new key
+		// replaces, and retiring the control plane's working key while
+		// sending it no replacement is the one outcome this whole path must
+		// never produce.
 	}
 
 	resp, err := m.client.Register(ctx, RegisterRequest{

@@ -156,7 +156,9 @@ enabled = false
 # revoked once the new one lands — the node stores only hashes, so a key it
 # has already published can never be re-sent, and rotating is what keeps the
 # control plane from being stranded with a key it lost. Your own IDE/SDK
-# keys are untouched by that rotation.
+# keys are untouched by that rotation — rotation matches on an internal
+# scope, not on the key's name, so calling one of your own keys
+# "control-plane" is just a name and costs you nothing.
 #
 # Turning this back off stops renewing the grant; it does not revoke the key
 # already granted. Revoke it through the admin API when you mean to.

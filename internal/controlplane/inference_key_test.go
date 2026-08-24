@@ -165,3 +165,27 @@ func TestA422RetryDropsTheInferenceKeyToo(t *testing.T) {
 		t.Error("retry still carried inference_key")
 	}
 }
+
+func TestAnEmptyKeyWithACommitIsNotCommitted(t *testing.T) {
+	// "Publish nothing" and "publish this" are different outcomes, and only
+	// the second may retire what it replaces. A provider that hands back a
+	// commit alongside an empty key must not be able to make the manager
+	// revoke the control plane's working key while sending no replacement.
+	keys := &stubEmptyKeyWithCommit{}
+	body := registerWith(t, keys, http.StatusOK)
+
+	if _, present := body["inference_key"]; present {
+		t.Error("inference_key present when nothing was minted")
+	}
+	if keys.committed != 0 {
+		t.Errorf("committed %d times for an empty key, want 0", keys.committed)
+	}
+}
+
+// stubEmptyKeyWithCommit publishes nothing but still offers a commit — the
+// shape the manager must refuse to act on.
+type stubEmptyKeyWithCommit struct{ committed int }
+
+func (s *stubEmptyKeyWithCommit) Mint() (string, func(), error) {
+	return "", func() { s.committed++ }, nil
+}
