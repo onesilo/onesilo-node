@@ -180,3 +180,51 @@ func (s *KeyStore) persistLocked() error {
 	}
 	return nil
 }
+
+// ControlPlaneKeyName is the Name minted keys carry when they exist for the
+// control plane rather than for a person's IDE or SDK. It is how the node
+// recognizes its own earlier grants so it can retire them — and how the
+// admin API can show the operator that Silo holds a key at all.
+const ControlPlaneKeyName = "control-plane"
+
+// MintForControlPlane mints a key marked as the control plane's and returns
+// the plaintext along with the ids of the control-plane keys it replaces.
+//
+// The store holds only hashes, so a minted secret is knowable exactly once.
+// That rules out "mint once and re-send it later": if the control plane
+// ever loses its copy — a rotated encryption key, a restored backup — the
+// node could not tell it again, and local indexing would stay broken with
+// no way back short of an operator revoking by hand. So each registration
+// mints a fresh one instead, which makes that state unreachable.
+//
+// The superseded ids are *returned* rather than revoked here: revoking
+// before the control plane has accepted the new key would break inference
+// for as long as the registration keeps failing. The caller revokes them
+// once the new key has landed.
+func (s *KeyStore) MintForControlPlane() (plaintext string, superseded []string, err error) {
+	s.mu.RLock()
+	for _, k := range s.keys {
+		if k.Name == ControlPlaneKeyName {
+			superseded = append(superseded, k.ID)
+		}
+	}
+	s.mu.RUnlock()
+
+	plaintext, _, err = s.Mint(ControlPlaneKeyName)
+	if err != nil {
+		return "", nil, err
+	}
+	return plaintext, superseded, nil
+}
+
+// RevokeAll revokes each id, ignoring ones already gone, and returns the
+// first error that was not "no such key".
+func (s *KeyStore) RevokeAll(ids []string) error {
+	var firstErr error
+	for _, id := range ids {
+		if err := s.Revoke(id); err != nil && !errors.Is(err, ErrKeyNotFound) && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}

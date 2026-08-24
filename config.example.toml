@@ -141,6 +141,28 @@ require_pairing_verification = true
 # matters, or keep it LAN-only.
 enabled = false
 
+# Publish an API key for this surface to the control plane at registration,
+# so One Silo can run inference on this node on your behalf. Indexing a
+# space artifact you marked "local_only" is the first thing that uses it:
+# the control plane sends the extracted text here instead of to a
+# third-party cloud model, which is the whole point of that boundary.
+#
+# Off by default and separate from `enabled` on purpose. Enabling the
+# surface says "clients I hand a key to may use my hardware"; this says
+# "One Silo may mint itself one". That is a grant over your GPU, so the
+# node will not assume it.
+#
+# The key is minted fresh on each registration and the one it replaces is
+# revoked once the new one lands — the node stores only hashes, so a key it
+# has already published can never be re-sent, and rotating is what keeps the
+# control plane from being stranded with a key it lost. Your own IDE/SDK
+# keys are untouched by that rotation.
+#
+# Turning this back off stops renewing the grant; it does not revoke the key
+# already granted. Revoke it through the admin API when you mean to.
+# Requires openai.enabled.
+publish_key_to_control_plane = false
+
 [admin]
 # Localhost-only admin API port. The Silo Desktop app drives the node
 # through this API; it is authenticated with the SILO_NODE_ADMIN_TOKEN
