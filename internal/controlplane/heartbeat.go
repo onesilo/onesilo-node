@@ -30,6 +30,21 @@ var capabilityStatusKeys = map[string][]string{
 	"gateway": {"relay"},
 }
 
+// InferenceKeyProvider mints the bearer key this node publishes to the
+// control plane, so the control plane can run inference here on the owner's
+// behalf (SILO-764).
+//
+// Mint returns the plaintext and a commit function to call once the control
+// plane has accepted it. Everything a mint supersedes stays valid until
+// then: revoking earlier keys up front would break inference for as long as
+// registration kept failing, which is exactly when the node is least able
+// to fix it. A nil provider, or one that returns an empty key, publishes
+// nothing -- which the backend reads as "keep what you have", not as a
+// revocation.
+type InferenceKeyProvider interface {
+	Mint() (plaintext string, commit func(), err error)
+}
+
 // Liveness values sent in capabilities_status.
 const (
 	statusLive = "live"
@@ -59,6 +74,7 @@ type Manager struct {
 	modelName      func() string
 	identityPubKey func() string
 	capabilities   func() []CapabilityProbe
+	inferenceKey   InferenceKeyProvider
 
 	kick chan struct{}
 
@@ -82,6 +98,7 @@ func NewManager(
 	modelName func() string,
 	identityPubKey func() string,
 	capabilities func() []CapabilityProbe,
+	inferenceKey InferenceKeyProvider,
 	logger *slog.Logger,
 ) *Manager {
 	if identityPubKey == nil {
@@ -95,6 +112,7 @@ func NewManager(
 		modelName:      modelName,
 		identityPubKey: identityPubKey,
 		capabilities:   capabilities,
+		inferenceKey:   inferenceKey,
 		kick:           make(chan struct{}, 1),
 		interval:       defaultHeartbeatInterval,
 	}
@@ -210,6 +228,31 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 		return registerRetryInterval
 	}
 
+	// Minted before the request and committed only after it succeeds, so a
+	// failed registration leaves the key the control plane already holds
+	// working. A mint that fails is not fatal: the node still registers and
+	// still serves everything that does not need the control plane to call
+	// it, and the backend says plainly which fix is needed.
+	inferenceKey, commitKey := "", func() {}
+	if m.inferenceKey != nil {
+		k, commit, err := m.inferenceKey.Mint()
+		switch {
+		case err != nil:
+			m.logger.Warn("could not mint an inference key for the control plane; "+
+				"local-compute indexing will stay unavailable", "error", err)
+		case k != "":
+			inferenceKey = k
+			if commit != nil {
+				commitKey = commit
+			}
+		}
+		// An empty key means "publish nothing", so its commit is not taken
+		// even when one is offered. Committing retires whatever the new key
+		// replaces, and retiring the control plane's working key while
+		// sending it no replacement is the one outcome this whole path must
+		// never produce.
+	}
+
 	resp, err := m.client.Register(ctx, RegisterRequest{
 		TunnelURL:          url,
 		DeviceName:         m.deviceName(),
@@ -218,9 +261,11 @@ func (m *Manager) register(ctx context.Context, url string, capabilities []strin
 		DeviceID:           deviceID,
 		CapabilitiesStatus: m.capabilitiesStatus(ctx),
 		IdentityPubKey:     m.identityPubKey(),
+		InferenceKey:       inferenceKey,
 	})
 	switch {
 	case err == nil:
+		commitKey()
 	case errors.Is(err, ErrNoToken) || IsStatus(err, http.StatusUnauthorized):
 		m.logger.Info("registration waiting for auth token", "error", err)
 		m.setAuthBlocked()

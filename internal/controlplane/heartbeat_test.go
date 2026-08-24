@@ -24,6 +24,7 @@ func TestRegisterPaymentRequired(t *testing.T) {
 		func() string { return "" },
 		func() string { return "" },
 		func() []CapabilityProbe { return nil },
+		nil, // no inference key published
 		slog.New(slog.DiscardHandler),
 	)
 
@@ -62,6 +63,7 @@ func newProbeManager(probes ...CapabilityProbe) *Manager {
 		func() string { return "" },
 		func() string { return "" },
 		func() []CapabilityProbe { return probes },
+		nil, // no inference key published
 		slog.Default(),
 	)
 }

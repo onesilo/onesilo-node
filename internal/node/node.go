@@ -224,6 +224,11 @@ func New(cfg config.Config, configPath, adminToken string, logger *slog.Logger, 
 		func() string { return n.computeCap.CurrentModel() },
 		n.identityPubKeyB64,
 		n.capabilityProbes,
+		&inferenceKeyProvider{
+			getCfg: n.snapshot,
+			keys:   openaiKeys,
+			logger: logger.With("component", "inference-key"),
+		},
 		logger.With("component", "controlplane"),
 	)
 

@@ -146,6 +146,17 @@ type Admin struct {
 // tunnel the tunnel edge can read it.
 type OpenAI struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
+	// PublishKeyToControlPlane lets the node hand the control plane an API
+	// key for this surface at registration, so the control plane can run
+	// inference here on the owner's behalf — indexing an artifact the owner
+	// marked local_only is the first use (SILO-757).
+	//
+	// Off by default, and deliberately its own switch rather than something
+	// openai.enabled implies. Enabling the surface says "clients I give a
+	// key to may use my hardware"; this says "Silo may mint itself one".
+	// That is a resource grant the operator should make on purpose, and the
+	// node fails closed on grants it was not given.
+	PublishKeyToControlPlane bool `toml:"publish_key_to_control_plane" json:"publish_key_to_control_plane"`
 }
 
 // Default returns the built-in defaults.
@@ -182,7 +193,8 @@ func Default() Config {
 			RequirePairingVerification: true,
 		},
 		OpenAI: OpenAI{
-			Enabled: false,
+			Enabled:                  false,
+			PublishKeyToControlPlane: false,
 		},
 		Admin: Admin{
 			Port: 8766,
@@ -259,6 +271,9 @@ func (c *Config) Validate() error {
 	}
 	if c.OpenAI.Enabled && !c.Capabilities.Compute {
 		return fmt.Errorf("openai.enabled requires capabilities.compute (the surface proxies to the local model)")
+	}
+	if c.OpenAI.PublishKeyToControlPlane && !c.OpenAI.Enabled {
+		return fmt.Errorf("openai.publish_key_to_control_plane requires openai.enabled (there is no surface to hand out a key for)")
 	}
 	return nil
 }

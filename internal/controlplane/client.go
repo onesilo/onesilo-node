@@ -72,6 +72,14 @@ type RegisterRequest struct {
 	// (base64 uncompressed point), published so the control plane can attest
 	// it in pairing assertions. Omitted when automated pairing is off.
 	IdentityPubKey string `json:"device_public_key,omitempty"`
+	// InferenceKey is a bearer key for this node's OpenAI-compatible
+	// surface, minted for the control plane so it can run inference here on
+	// the owner's behalf -- indexing a local_only artifact is the first use
+	// (SILO-757/SILO-764). Omitted unless the operator turned on
+	// openai.publish_key_to_control_plane; the backend preserves the key it
+	// already holds when the field is absent, so omitting it is not a
+	// revocation.
+	InferenceKey string `json:"inference_key,omitempty"`
 }
 
 // RegisterResponse is the subset of the registration echo we use.
@@ -86,14 +94,21 @@ type RegisterResponse struct {
 }
 
 // Register registers (or re-registers) this node as a destination.
-// If the server rejects capabilities_status as an unknown field (422 from a
-// pre-rollout deploy), the request is retried without it.
+// If the server rejects a newer field as unknown (422 from a pre-rollout
+// deploy), the request is retried without the fields a pre-rollout server
+// would not recognize.
 func (c *Client) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	var resp RegisterResponse
 	err := c.do(ctx, http.MethodPost, "/api/v1/destinations", req, &resp)
-	if err != nil && IsStatus(err, 422) && req.CapabilitiesStatus != nil {
+	if err != nil && IsStatus(err, 422) &&
+		(req.CapabilitiesStatus != nil || req.InferenceKey != "") {
+		// Which of the two the server choked on is not distinguishable from
+		// a 422, so drop both. Losing capabilities_status costs liveness
+		// detail; losing inference_key means that server is too old to use
+		// the key anyway.
 		fallback := req
 		fallback.CapabilitiesStatus = nil
+		fallback.InferenceKey = ""
 		err = c.do(ctx, http.MethodPost, "/api/v1/destinations", fallback, &resp)
 	}
 	if err != nil {
