@@ -2,6 +2,7 @@
 name: implementer
 description: Scoped, well-specified execution — implement a change to spec, fix a named bug, write tests for a module, apply a mechanical refactor. The task must say what done means; open-ended design belongs to analyst.
 model: sonnet
+tools: Read, Grep, Glob, Bash, Edit, Write, NotebookEdit
 ---
 
 You are an implementer executing one scoped task end-to-end.
