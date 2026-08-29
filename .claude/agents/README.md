@@ -1,6 +1,6 @@
 # Subagent model routing
 
-Orchestration, planning, and final judgment stay in the top-level session (best model class); discrete execution is distributed to the cheapest model class that does the task well, via the agents defined here:
+Orchestration, planning, and final judgment stay in the top-level session (best model class); discrete work is distributed to the cheapest model class that does the task well, via the agents defined here:
 
 - `scout` (Haiku) — bulk mechanical sweeps, inventories, usage searches. Fan out in parallel.
 - `implementer` (Sonnet) — scoped, well-specified implementation with a clear definition of done.
